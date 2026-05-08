@@ -307,24 +307,33 @@ const ProgressBar = ({ steps, currentStepIndex }) => (
   </div>
 );
 
+// === [feat/video-playback] HTML5 video化 & 視聴時間チェック対応 ===
+// 旧実装（タイマーによる擬似再生）から実 <video> 要素ベースに変更。
+// 早送り検出のため累積再生秒数 (_watchedSec) を videoRef に蓄積し、
+// ended 発火時に必要視聴時間に達していなければ「視聴時間不足」モーダルを表示し最初から見直しさせる。
+// 視聴済み状態は外部 state (completedVideoIds / onVideoComplete) で管理し、
+// 同じフロー内の複数 VIDEO ステップを跨いだ進捗保持・ロック制御を可能にする。
 const VideoStep = ({
   checkVideo,
   onCheckChange,
   onNext,
   videoPlaylist,
   stepConfig,
+  completedVideoIds,
+  onVideoComplete,
 }) => {
   const targetVideoIds = stepConfig.videoIds || [];
-  const targetVideos = videoPlaylist.filter((v) =>
-    targetVideoIds.includes(v.id),
-  );
-  const activePlaylist = targetVideos.length > 0 ? targetVideos : videoPlaylist;
+  const activePlaylist =
+    targetVideoIds.length > 0
+      ? videoPlaylist.filter((v) => targetVideoIds.includes(v.id))
+      : videoPlaylist;
 
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [completedVideoIds, setCompletedVideoIds] = useState([]);
-  const timerRef = useRef(null);
+  const [insufficientModal, setInsufficientModal] = useState(null);
+  const videoRef = useRef(null);
+  const videoStartTimesRef = useRef({});
 
   const currentVideo = activePlaylist[currentVideoIndex] || {};
   const isAllCompleted = activePlaylist.every((v) =>
@@ -336,53 +345,133 @@ const VideoStep = ({
       ? (completedVideoIds.length / activePlaylist.length) * 100
       : 0;
 
+  const parseDurationSec = (dur) => {
+    if (!dur) return 0;
+    const parts = String(dur).split(":").map(Number);
+    return parts.length === 2 ? parts[0] * 60 + parts[1] : parts[0];
+  };
+
+  // 動画切り替え時に内部状態をリセット
   useEffect(() => {
     setProgress(0);
     setIsPlaying(false);
-    clearInterval(timerRef.current);
+    if (videoRef.current) {
+      videoRef.current.load();
+      videoRef.current._watchedSec = 0;
+      videoRef.current._lastTime = 0;
+    }
   }, [currentVideoIndex]);
+
+  // タブが非表示になったら自動 pause
   useEffect(() => {
-    return () => clearInterval(timerRef.current);
+    const handleVisibilityChange = () => {
+      if (document.hidden && videoRef.current && !videoRef.current.paused) {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
-  const togglePlay = () => {
-    if (progress >= 100) {
-      setProgress(0);
-      setIsPlaying(true);
-      runTimer();
-      return;
+  const handleTimeUpdate = () => {
+    const v = videoRef.current;
+    if (!v || !v.duration) return;
+    const pct = (v.currentTime / v.duration) * 100;
+    setProgress(pct);
+
+    // 累積再生時間を記録（早送りを除いた実際の視聴秒数）
+    // 直前の currentTime との差分が「自然な進行(≒0〜2秒)」の場合のみ加算する。
+    // シーク（早送り）した場合は差分が大きくなるため加算しない。
+    const now = v.currentTime;
+    const prev = v._lastTime ?? now;
+    const delta = now - prev;
+    if (delta > 0 && delta < 2) {
+      v._watchedSec = (v._watchedSec || 0) + delta;
     }
-    if (isPlaying) {
-      clearInterval(timerRef.current);
-      setIsPlaying(false);
-    } else {
-      setIsPlaying(true);
-      runTimer();
+    v._lastTime = now;
+  };
+
+  const handleVideoEnded = () => {
+    setIsPlaying(false);
+    if (!completedVideoIds.includes(currentVideo.id)) {
+      const v = videoRef.current;
+      const actualDuration = v ? v.duration : 0;
+      const requiredSec = parseDurationSec(currentVideo.duration);
+
+      // 動画が最後まで再生された (ended 発火) としても、
+      // 早送りで currentTime が duration に達した場合も ended は発火する。
+      // そのため累積再生時間 watchedSec で実視聴量を判定する。
+      const watchedSec = v ? v._watchedSec || 0 : 0;
+      const threshold = actualDuration > 0 ? actualDuration : requiredSec;
+
+      if (watchedSec < threshold * 0.99) {
+        const fmt = (s) => `${Math.floor(s / 60)}分${Math.round(s % 60)}秒`;
+        if (v) {
+          v._watchedSec = 0;
+          v.currentTime = 0;
+        }
+        delete videoStartTimesRef.current[currentVideo.id];
+        localStorage.removeItem(`videoStartTime_${currentVideo.id}`);
+        localStorage.removeItem(`videoEndTime_${currentVideo.id}`);
+        setProgress(0);
+        setInsufficientModal({
+          title: currentVideo.title,
+          required: fmt(threshold),
+        });
+        return;
+      }
+
+      if (v) {
+        v._watchedSec = 0;
+      }
+      setProgress(100);
+      onVideoComplete((prev) => [...prev, currentVideo.id]);
     }
   };
 
-  const runTimer = () => {
-    timerRef.current = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(timerRef.current);
-          setIsPlaying(false);
-          if (!completedVideoIds.includes(currentVideo.id)) {
-            setCompletedVideoIds((prevIds) => [...prevIds, currentVideo.id]);
-          }
-          return 100;
-        }
-        return prev + 0.5;
-      });
-    }, 20);
+  const togglePlay = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (isCurrentCompleted) {
+      v.currentTime = 0;
+      setProgress(0);
+      v.play();
+      setIsPlaying(true);
+      return;
+    }
+    if (isPlaying) {
+      v.pause();
+      setIsPlaying(false);
+    } else {
+      // 初回再生時のみ開始時刻を記録
+      if (!videoStartTimesRef.current[currentVideo.id]) {
+        const startTime = Date.now();
+        videoStartTimesRef.current[currentVideo.id] = startTime;
+        localStorage.setItem(
+          `videoStartTime_${currentVideo.id}`,
+          String(startTime),
+        );
+      }
+      v.play();
+      setIsPlaying(true);
+    }
   };
 
   const handleNextVideo = () => {
     if (currentVideoIndex < activePlaylist.length - 1)
       setCurrentVideoIndex((prev) => prev + 1);
   };
+
   const selectVideo = (index) => {
-    setCurrentVideoIndex(index);
+    // 前の動画を視聴済みでなければ次に進めない（ロック）
+    if (
+      index === 0 ||
+      completedVideoIds.includes(activePlaylist[index - 1]?.id)
+    ) {
+      setCurrentVideoIndex(index);
+    }
   };
 
   if (activePlaylist.length === 0)
@@ -394,6 +483,55 @@ const VideoStep = ({
 
   return (
     <div className="flex flex-col items-center max-w-4xl mx-auto bg-white p-6 rounded-xl shadow-md">
+      {insufficientModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div className="bg-red-50 px-6 pt-6 pb-4 flex flex-col items-center">
+              <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center mb-3">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="w-7 h-7 text-red-500"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-800 mb-1">
+                視聴時間が不足しています
+              </h3>
+            </div>
+            <div className="px-6 py-4">
+              <p className="text-gray-700 text-sm mb-1">
+                「{insufficientModal.title}」の視聴時間が不足しています。
+              </p>
+              <p className="text-gray-700 text-sm mb-1">
+                必要な視聴時間:{" "}
+                <span className="font-bold text-red-600">
+                  {insufficientModal.required}以上
+                </span>
+              </p>
+              <p className="text-gray-700 text-sm">
+                もう一度最初から視聴してください。
+              </p>
+            </div>
+            <div className="px-6 pb-6">
+              <button
+                onClick={() => setInsufficientModal(null)}
+                className="w-full py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl transition-colors"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <h2 className="text-2xl font-bold mb-2 text-gray-800">
         {stepConfig.title || "動画視聴"}
       </h2>
@@ -421,13 +559,26 @@ const VideoStep = ({
             className="aspect-video relative flex items-center justify-center bg-gray-800 cursor-pointer flex-grow"
             onClick={togglePlay}
           >
-            <div
-              className="absolute inset-0 opacity-20 bg-gradient-to-r from-blue-600 to-gray-900 transition-all duration-100 ease-linear"
-              style={{ width: `${progress}%` }}
-            ></div>
+            {currentVideo.url ? (
+              <video
+                ref={videoRef}
+                src={currentVideo.url}
+                className="absolute inset-0 w-full h-full object-contain"
+                onTimeUpdate={handleTimeUpdate}
+                onEnded={handleVideoEnded}
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+              />
+            ) : (
+              <span className="text-gray-400 text-sm z-10">
+                動画を読み込めませんでした
+              </span>
+            )}
             {!isPlaying && !isCurrentCompleted && (
-              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm hover:bg-white/30 transition-all z-10">
-                <Play size={32} className="text-white ml-1" />
+              <div className="absolute inset-0 flex items-center justify-center z-10">
+                <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm hover:bg-white/30 transition-all">
+                  <Play size={32} className="text-white ml-1" />
+                </div>
               </div>
             )}
             {isPlaying && (
@@ -477,9 +628,9 @@ const VideoStep = ({
           </div>
           <div className="bg-gray-800 p-3">
             <div className="flex items-center space-x-3 mb-2">
-              <div className="flex-1 h-1.5 bg-gray-600 rounded-full overflow-hidden">
+              <div className="flex-1 h-3 bg-gray-600 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-blue-500 transition-all duration-100 ease-linear"
+                  className="h-full bg-blue-500 transition-none"
                   style={{ width: `${progress}%` }}
                 ></div>
               </div>
@@ -499,16 +650,20 @@ const VideoStep = ({
             {activePlaylist.map((video, index) => {
               const isCompleted = completedVideoIds.includes(video.id);
               const isActive = index === currentVideoIndex;
+              const isUnlocked =
+                index === 0 ||
+                completedVideoIds.includes(activePlaylist[index - 1]?.id);
               return (
                 <button
                   key={video.id}
                   onClick={() => selectVideo(index)}
-                  className={`w-full text-left p-3 border-b border-gray-100 transition-colors flex items-start ${isActive ? "bg-blue-50" : "hover:bg-white"}`}
+                  disabled={!isUnlocked}
+                  className={`w-full text-left p-3 border-b border-gray-100 transition-colors flex items-start ${isActive ? "bg-blue-50" : isUnlocked ? "hover:bg-white" : "opacity-50 cursor-not-allowed bg-gray-50"}`}
                 >
                   <div className="mr-3 mt-0.5">
                     {isCompleted ? (
                       <CheckCircle size={16} className="text-green-500" />
-                    ) : (
+                    ) : isUnlocked ? (
                       <div
                         className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${isActive ? "border-blue-500" : "border-gray-300"}`}
                       >
@@ -516,16 +671,20 @@ const VideoStep = ({
                           <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
                         )}
                       </div>
+                    ) : (
+                      <Lock size={14} className="text-gray-400" />
                     )}
                   </div>
                   <div>
                     <p
-                      className={`text-sm font-medium ${isActive ? "text-blue-700" : "text-gray-700"}`}
+                      className={`text-sm font-medium ${isActive ? "text-blue-700" : isUnlocked ? "text-gray-700" : "text-gray-400"}`}
                     >
                       {video.title}
                     </p>
                     <p className="text-xs text-gray-400 mt-0.5">
-                      {video.duration}
+                      {isUnlocked
+                        ? video.duration
+                        : "前の動画を視聴してください"}
                     </p>
                   </div>
                 </button>
@@ -1103,6 +1262,13 @@ const CustomerRemoteMode = ({
     ),
   );
 
+  // === [feat/video-playback] 視聴済み動画の保持 ===
+  // リモート接客は基本的にステップを進む一方通行のため、ステップ切替時に視聴状態をリセットする。
+  const [watchedVideoIds, setWatchedVideoIds] = useState([]);
+  useEffect(() => {
+    setWatchedVideoIds([]);
+  }, [currentStepIndex]);
+
   const currentStep = remoteSteps[currentStepIndex];
   const templateName = staffTemplates.find(
     (t) => t.id === flow.templateId,
@@ -1129,11 +1295,14 @@ const CustomerRemoteMode = ({
       case "VIDEO":
         return (
           <VideoStep
+            key={currentStep.id}
             checkVideo={customerData.checkVideo}
             onCheckChange={handleCustomerChange}
             onNext={nextStep}
             videoPlaylist={videoPlaylist}
             stepConfig={currentStep}
+            completedVideoIds={watchedVideoIds}
+            onVideoComplete={setWatchedVideoIds}
           />
         );
       case "CUSTOMER_INFO":
@@ -2165,7 +2334,7 @@ const AdminDashboard = ({
           </div>
         )}
 
-        {/* === コンテンツ管理タブ（動画アップロード機能の修正部分） === */}
+        {/* === コンテンツ管理タブ === */}
         {activeTab === "upload" && (
           <div className="max-w-6xl mx-auto">
             <div className="flex space-x-1 mb-6 border-b">
@@ -3013,6 +3182,13 @@ const CustomerServiceMode = ({
   const [signatureImage, setSignatureImage] = useState(null);
   const [staffFields, setStaffFields] = useState([]);
 
+  // === [feat/video-playback] ステップごとの視聴済み動画を保持 ===
+  // フロー内に複数の VIDEO ステップがある場合、それぞれの視聴状態を独立して保持する。
+  // 戻る操作で前の VIDEO ステップに戻った際にも視聴済みのままになるよう、
+  // ステップインデックスをキーに視聴済み動画 ID 配列を保持する。
+  const [watchedVideosByStep, setWatchedVideosByStep] = useState({});
+  const watchedVideoIds = watchedVideosByStep[currentStepIndex] || [];
+
   const handleFlowSelect = (flow) => {
     setSelectedFlow(flow);
     const template =
@@ -3070,12 +3246,37 @@ const CustomerServiceMode = ({
   const currentStep = selectedFlow.steps[currentStepIndex];
   const nextStep = () => {
     if (currentStepIndex < selectedFlow.steps.length - 1) {
+      // === [feat/video-playback] ===
+      // 次のステップへ進む際、現ステップが VIDEO ならチェック状態をリセットする
+      // （次の VIDEO ステップで checkVideo が true のまま残らないように）。
+      if (currentStep.type === "VIDEO") {
+        setCustomerData((prev) => ({ ...prev, checkVideo: false }));
+      }
       setCurrentStepIndex((prev) => prev + 1);
     }
   };
   const prevStep = () => {
     if (currentStepIndex > 0) {
-      setCurrentStepIndex((prev) => prev - 1);
+      const prevIndex = currentStepIndex - 1;
+      const prevStepDef = selectedFlow.steps[prevIndex];
+      // === [feat/video-playback] ===
+      // 戻り先が VIDEO ステップで、その VIDEO ステップの全動画が視聴済みなら
+      // 「全ての動画を視聴」チェックを自動で復活させる。
+      if (prevStepDef?.type === "VIDEO") {
+        const prevVideoIds = watchedVideosByStep[prevIndex] || [];
+        const prevTargetIds = prevStepDef.videoIds || [];
+        const prevPlaylist =
+          prevTargetIds.length > 0
+            ? videoPlaylist.filter((v) => prevTargetIds.includes(v.id))
+            : videoPlaylist;
+        const allDone =
+          prevPlaylist.length > 0 &&
+          prevPlaylist.every((v) => prevVideoIds.includes(v.id));
+        if (allDone) {
+          setCustomerData((prev) => ({ ...prev, checkVideo: true }));
+        }
+      }
+      setCurrentStepIndex(prevIndex);
     } else {
       if (
         window.confirm("メニュー選択に戻りますか？入力内容は破棄されます。")
@@ -3090,6 +3291,7 @@ const CustomerServiceMode = ({
           checkTerms: false,
         });
         setSignatureImage(null);
+        setWatchedVideosByStep({});
       }
     }
   };
@@ -3137,11 +3339,21 @@ const CustomerServiceMode = ({
       case "VIDEO":
         return (
           <VideoStep
+            key={currentStep.id}
             checkVideo={customerData.checkVideo}
             onCheckChange={handleCustomerChange}
             onNext={nextStep}
             videoPlaylist={videoPlaylist}
             stepConfig={currentStep}
+            completedVideoIds={watchedVideoIds}
+            onVideoComplete={(updater) =>
+              setWatchedVideosByStep((prev) => {
+                const current = prev[currentStepIndex] || [];
+                const next =
+                  typeof updater === "function" ? updater(current) : updater;
+                return { ...prev, [currentStepIndex]: next };
+              })
+            }
           />
         );
       case "CUSTOMER_INFO":
