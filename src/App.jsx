@@ -1261,7 +1261,7 @@ const CustomerRemoteMode = ({
       ),
     ),
   );
-
+  const [customerId, setCustomerId] = useState(null);
   // === [feat/video-playback] 視聴済み動画の保持 ===
   // リモート接客は基本的にステップを進む一方通行のため、ステップ切替時に視聴状態をリセットする。
   const [watchedVideoIds, setWatchedVideoIds] = useState([]);
@@ -1274,9 +1274,26 @@ const CustomerRemoteMode = ({
     (t) => t.id === flow.templateId,
   )?.name;
 
-  const nextStep = () => {
-    if (currentStepIndex < remoteSteps.length - 1)
+  const nextStep = async () => {
+    if (currentStepIndex < remoteSteps.length - 1) {
+      // === [feat/customer-db-save] ===
+      // お客様情報入力ステップを通過したら customers テーブルに保存
+      if (currentStep.type === "CUSTOMER_INFO") {
+        const { data } = await supabase
+          .from("customers")
+          .insert({
+            name: customerData.name,
+            name_kana: customerData.nameKana || null,
+            tell: customerData.phone || null,
+            mail: customerData.email || null,
+            address: customerData.address || null,
+          })
+          .select("id")
+          .maybeSingle();
+        if (data?.id) setCustomerId(data.id);
+      }
       setCurrentStepIndex((prev) => prev + 1);
+    }
   };
   const prevStep = () => {
     if (currentStepIndex > 0) setCurrentStepIndex((prev) => prev - 1);
@@ -3181,6 +3198,7 @@ const CustomerServiceMode = ({
   });
   const [signatureImage, setSignatureImage] = useState(null);
   const [staffFields, setStaffFields] = useState([]);
+  const [customerId, setCustomerId] = useState(null);
 
   // === [feat/video-playback] ステップごとの視聴済み動画を保持 ===
   // フロー内に複数の VIDEO ステップがある場合、それぞれの視聴状態を独立して保持する。
@@ -3244,13 +3262,29 @@ const CustomerServiceMode = ({
   }
 
   const currentStep = selectedFlow.steps[currentStepIndex];
-  const nextStep = () => {
+  const nextStep = async () => {
     if (currentStepIndex < selectedFlow.steps.length - 1) {
       // === [feat/video-playback] ===
       // 次のステップへ進む際、現ステップが VIDEO ならチェック状態をリセットする
       // （次の VIDEO ステップで checkVideo が true のまま残らないように）。
       if (currentStep.type === "VIDEO") {
         setCustomerData((prev) => ({ ...prev, checkVideo: false }));
+      }
+      // === [feat/customer-db-save] ===
+      // お客様情報入力ステップを通過したら customers テーブルに保存
+      if (currentStep.type === "CUSTOMER_INFO") {
+        const { data } = await supabase
+          .from("customers")
+          .insert({
+            name: customerData.name,
+            name_kana: customerData.nameKana || null,
+            tell: customerData.phone || null,
+            mail: customerData.email || null,
+            address: customerData.address || null,
+          })
+          .select("id")
+          .maybeSingle();
+        if (data?.id) setCustomerId(data.id);
       }
       setCurrentStepIndex((prev) => prev + 1);
     }
