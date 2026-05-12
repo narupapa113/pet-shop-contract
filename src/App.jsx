@@ -52,7 +52,6 @@ import {
 
 // --- 定数・初期値 ---
 
-// ステップの型定義
 const STEP_TYPES = {
   VIDEO: { label: "動画説明", icon: Play },
   CUSTOMER_INFO: { label: "お客様情報", icon: User },
@@ -61,7 +60,6 @@ const STEP_TYPES = {
   CONTRACT_PREVIEW: { label: "契約書発行", icon: FileText },
 };
 
-// デフォルトのテンプレート定義
 const DEFAULT_TEMPLATES = [
   {
     id: "tpl_standard",
@@ -143,10 +141,8 @@ const DEFAULT_TEMPLATES = [
   },
 ];
 
-// デフォルト動画プレイリスト（DBから取得するため空に変更）
 const DEFAULT_VIDEO_PLAYLIST = [];
 
-// デフォルトドキュメントリスト（PDF等）
 const DEFAULT_DOCUMENTS = [
   {
     id: "doc_1",
@@ -174,7 +170,6 @@ const DEFAULT_DOCUMENTS = [
   },
 ];
 
-// デフォルトのフロー定義
 const DEFAULT_FLOWS = [
   {
     id: "flow_standard",
@@ -207,7 +202,6 @@ const DEFAULT_FLOWS = [
   },
 ];
 
-// モックデータ
 const MOCK_CONTRACTS = [
   {
     id: "C001",
@@ -276,7 +270,6 @@ const ProgressBar = ({ steps, currentStepIndex }) => (
           const Icon = stepTypeInfo.icon;
           const isActive = index <= currentStepIndex;
           const isCurrent = index === currentStepIndex;
-
           return (
             <React.Fragment key={step.id}>
               <div
@@ -294,7 +287,7 @@ const ProgressBar = ({ steps, currentStepIndex }) => (
               {index < steps.length - 1 && (
                 <div className="flex-1 h-1 bg-gray-200 mx-2 relative min-w-[20px]">
                   <div
-                    className={`absolute top-0 left-0 h-full bg-blue-500 transition-all duration-300`}
+                    className="absolute top-0 left-0 h-full bg-blue-500 transition-all duration-300"
                     style={{ width: index < currentStepIndex ? "100%" : "0%" }}
                   ></div>
                 </div>
@@ -308,11 +301,6 @@ const ProgressBar = ({ steps, currentStepIndex }) => (
 );
 
 // === [feat/video-playback] HTML5 video化 & 視聴時間チェック対応 ===
-// 旧実装（タイマーによる擬似再生）から実 <video> 要素ベースに変更。
-// 早送り検出のため累積再生秒数 (_watchedSec) を videoRef に蓄積し、
-// ended 発火時に必要視聴時間に達していなければ「視聴時間不足」モーダルを表示し最初から見直しさせる。
-// 視聴済み状態は外部 state (completedVideoIds / onVideoComplete) で管理し、
-// 同じフロー内の複数 VIDEO ステップを跨いだ進捗保持・ロック制御を可能にする。
 const VideoStep = ({
   checkVideo,
   onCheckChange,
@@ -351,7 +339,6 @@ const VideoStep = ({
     return parts.length === 2 ? parts[0] * 60 + parts[1] : parts[0];
   };
 
-  // 動画切り替え時に内部状態をリセット
   useEffect(() => {
     setProgress(0);
     setIsPlaying(false);
@@ -362,7 +349,6 @@ const VideoStep = ({
     }
   }, [currentVideoIndex]);
 
-  // タブが非表示になったら自動 pause
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden && videoRef.current && !videoRef.current.paused) {
@@ -380,16 +366,10 @@ const VideoStep = ({
     if (!v || !v.duration) return;
     const pct = (v.currentTime / v.duration) * 100;
     setProgress(pct);
-
-    // 累積再生時間を記録（早送りを除いた実際の視聴秒数）
-    // 直前の currentTime との差分が「自然な進行(≒0〜2秒)」の場合のみ加算する。
-    // シーク（早送り）した場合は差分が大きくなるため加算しない。
     const now = v.currentTime;
     const prev = v._lastTime ?? now;
     const delta = now - prev;
-    if (delta > 0 && delta < 2) {
-      v._watchedSec = (v._watchedSec || 0) + delta;
-    }
+    if (delta > 0 && delta < 2) v._watchedSec = (v._watchedSec || 0) + delta;
     v._lastTime = now;
   };
 
@@ -399,13 +379,8 @@ const VideoStep = ({
       const v = videoRef.current;
       const actualDuration = v ? v.duration : 0;
       const requiredSec = parseDurationSec(currentVideo.duration);
-
-      // 動画が最後まで再生された (ended 発火) としても、
-      // 早送りで currentTime が duration に達した場合も ended は発火する。
-      // そのため累積再生時間 watchedSec で実視聴量を判定する。
       const watchedSec = v ? v._watchedSec || 0 : 0;
       const threshold = actualDuration > 0 ? actualDuration : requiredSec;
-
       if (watchedSec < threshold * 0.99) {
         const fmt = (s) => `${Math.floor(s / 60)}分${Math.round(s % 60)}秒`;
         if (v) {
@@ -422,10 +397,7 @@ const VideoStep = ({
         });
         return;
       }
-
-      if (v) {
-        v._watchedSec = 0;
-      }
+      if (v) v._watchedSec = 0;
       setProgress(100);
       onVideoComplete((prev) => [...prev, currentVideo.id]);
     }
@@ -445,7 +417,6 @@ const VideoStep = ({
       v.pause();
       setIsPlaying(false);
     } else {
-      // 初回再生時のみ開始時刻を記録
       if (!videoStartTimesRef.current[currentVideo.id]) {
         const startTime = Date.now();
         videoStartTimesRef.current[currentVideo.id] = startTime;
@@ -465,13 +436,11 @@ const VideoStep = ({
   };
 
   const selectVideo = (index) => {
-    // 前の動画を視聴済みでなければ次に進めない（ロック）
     if (
       index === 0 ||
       completedVideoIds.includes(activePlaylist[index - 1]?.id)
-    ) {
+    )
       setCurrentVideoIndex(index);
-    }
   };
 
   if (activePlaylist.length === 0)
@@ -1069,7 +1038,6 @@ const ContractPreviewStep = ({
   const attachedDocuments = documentsList.filter((doc) =>
     attachmentIds.includes(doc.id),
   );
-
   return (
     <div className="flex flex-col items-center">
       <div className="w-full max-w-4xl mb-6 flex justify-between items-center print:hidden">
@@ -1099,8 +1067,6 @@ const ContractPreviewStep = ({
           )}
         </div>
       </div>
-
-      {/* 契約書表面 */}
       <div
         id="contract-preview"
         className="bg-white p-12 shadow-2xl w-[210mm] min-h-[297mm] text-gray-900 leading-relaxed mx-auto print:shadow-none print:w-full print:m-0 print:p-0"
@@ -1201,8 +1167,6 @@ const ContractPreviewStep = ({
           <p>TEL: {companyInfo?.phone || "03-XXXX-XXXX"}</p>
         </div>
       </div>
-
-      {/* 裏面（添付資料）プレビュー */}
       {attachedDocuments.length > 0 && (
         <div className="mt-8 w-full max-w-4xl print:mt-0">
           <p className="text-center text-gray-500 mb-2 print:hidden">
@@ -1231,7 +1195,6 @@ const ContractPreviewStep = ({
   );
 };
 
-// --- リモート接客モード ---
 const CustomerRemoteMode = ({
   remoteSession,
   onComplete,
@@ -1262,8 +1225,6 @@ const CustomerRemoteMode = ({
     ),
   );
 
-  // === [feat/video-playback] 視聴済み動画の保持 ===
-  // リモート接客は基本的にステップを進む一方通行のため、ステップ切替時に視聴状態をリセットする。
   const [watchedVideoIds, setWatchedVideoIds] = useState([]);
   useEffect(() => {
     setWatchedVideoIds([]);
@@ -1361,7 +1322,6 @@ const CustomerRemoteMode = ({
   );
 };
 
-// --- ログインページ（URLパラメータ対応） ---
 const LoginPage = ({ onLoginAdmin, onLoginStaff, companyName }) => {
   const [demoUrl, setDemoUrl] = useState("");
   return (
@@ -1406,7 +1366,6 @@ const LoginPage = ({ onLoginAdmin, onLoginStaff, companyName }) => {
                 管理画面へログイン
               </button>
             </div>
-
             <div className="pt-4 border-t mt-4">
               <p className="text-xs text-gray-400 mb-2 text-center">
                 デモ用: 発行されたURLを入力して移動
@@ -1437,7 +1396,6 @@ const LoginPage = ({ onLoginAdmin, onLoginStaff, companyName }) => {
   );
 };
 
-// --- 管理画面 (拡張) ---
 const AdminDashboard = ({
   onLogout,
   staffTemplates,
@@ -1511,12 +1469,14 @@ const AdminDashboard = ({
   };
   const addNewTemplate = () => {
     const newId = `tpl_${Date.now()}`;
-    const newTemplate = {
-      id: newId,
-      name: "新しいテンプレート",
-      fields: [...DEFAULT_TEMPLATES[0].fields],
-    };
-    setStaffTemplates([...staffTemplates, newTemplate]);
+    setStaffTemplates([
+      ...staffTemplates,
+      {
+        id: newId,
+        name: "新しいテンプレート",
+        fields: [...DEFAULT_TEMPLATES[0].fields],
+      },
+    ]);
     setSelectedTemplateId(newId);
   };
   const deleteTemplate = (id) => {
@@ -1552,7 +1512,6 @@ const AdminDashboard = ({
   const [playingVideo, setPlayingVideo] = useState(null);
   const [thumbnails, setThumbnails] = useState({});
 
-  // DBから動画一覧を取得
   const fetchVideos = useCallback(async () => {
     const { data } = await supabase
       .from("videos")
@@ -1597,7 +1556,6 @@ const AdminDashboard = ({
     fetchVideos();
   }, [fetchVideos]);
 
-  // 動画ファイルからサムネイルを生成
   const generateThumbnail = useCallback((videoId, url) => {
     if (!url) return;
     const video = document.createElement("video");
@@ -1626,13 +1584,10 @@ const AdminDashboard = ({
 
   useEffect(() => {
     videoPlaylist.forEach((v) => {
-      if (v.url && !thumbnails[v.id]) {
-        generateThumbnail(v.id, v.url);
-      }
+      if (v.url && !thumbnails[v.id]) generateThumbnail(v.id, v.url);
     });
   }, [videoPlaylist, generateThumbnail]);
 
-  // ファイル選択時にタイトル・再生時間を自動セット
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -1684,7 +1639,6 @@ const AdminDashboard = ({
     setSelectedFile(null);
   };
 
-  // 保存処理（動画はSupabaseへアップロード、PDFは元のローカル管理）
   const handleContentSave = async () => {
     if (!newContentData.title) return;
     if (contentTab === "video") {
@@ -1792,7 +1746,6 @@ const AdminDashboard = ({
         setUploadProgress("一覧を更新中...");
         await fetchVideos();
       } else {
-        // ドキュメント(PDF)はローカル管理のまま
         if (editingContentId) {
           setDocumentsList((prev) =>
             prev.map((d) =>
@@ -1800,12 +1753,14 @@ const AdminDashboard = ({
             ),
           );
         } else {
-          const newDoc = {
-            id: `doc_${Date.now()}`,
-            ...newContentData,
-            filename: newContentData.filename || "uploaded_file.pdf",
-          };
-          setDocumentsList((prev) => [...prev, newDoc]);
+          setDocumentsList((prev) => [
+            ...prev,
+            {
+              id: `doc_${Date.now()}`,
+              ...newContentData,
+              filename: newContentData.filename || "uploaded_file.pdf",
+            },
+          ]);
         }
       }
       closeUploadModal();
@@ -1817,7 +1772,6 @@ const AdminDashboard = ({
     }
   };
 
-  // 削除処理（動画はSupabase、PDFはローカル）
   const deleteContent = async (id) => {
     if (contentTab === "video") {
       const video = videoPlaylist.find((v) => v.id === id);
@@ -1846,13 +1800,47 @@ const AdminDashboard = ({
   });
   const [editingSteps, setEditingSteps] = useState([]);
   const [flowModalOpen, setFlowModalOpen] = useState(false);
+
+  // === [feat/flow-db-storage] ===
+  // flow_header テーブルからフロー一覧を取得する。
+  // ステップ構成は description カラムに JSON 文字列として保存している。
+  const fetchFlows = useCallback(async () => {
+    const { data } = await supabase
+      .from("flow_header")
+      .select("*")
+      .order("create_at", { ascending: false });
+    if (data && data.length > 0) {
+      const parsed = data.map((row) => {
+        let steps = [];
+        try {
+          steps = JSON.parse(row.description || "[]");
+        } catch {
+          steps = [];
+        }
+        return {
+          id: row.id,
+          name: row.name,
+          description: "",
+          templateId: row.contract_template_id || "",
+          attachmentIds: row.files || [],
+          steps,
+        };
+      });
+      setFlows(parsed);
+    }
+  }, [setFlows]);
+
+  useEffect(() => {
+    fetchFlows();
+  }, [fetchFlows]);
+
   const openFlowModal = (flow = null) => {
     if (flow) {
       setEditingFlowId(flow.id);
       setNewFlowData({
         name: flow.name,
         description: flow.description || "",
-        templateId: flow.templateId || staffTemplates[0].id,
+        templateId: flow.templateId || staffTemplates[0]?.id || "",
         attachmentIds: flow.attachmentIds || [],
       });
       setEditingSteps([...flow.steps]);
@@ -1861,7 +1849,7 @@ const AdminDashboard = ({
       setNewFlowData({
         name: "",
         description: "",
-        templateId: staffTemplates[0].id,
+        templateId: staffTemplates[0]?.id || "",
         attachmentIds: [],
       });
       setEditingSteps([
@@ -1926,28 +1914,49 @@ const AdminDashboard = ({
       : [...currentIds, docId];
     setNewFlowData({ ...newFlowData, attachmentIds: newIds });
   };
-  const saveFlow = () => {
+
+  // === [feat/flow-db-storage] ===
+  // UUID形式のみDBに渡す（DEFAULT_TEMPLATES等の独自IDは contract_template_id (UUID型) に入れられないため）
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  // === [feat/flow-db-storage] ===
+  // フローを flow_header テーブルへ insert/update する。
+  const saveFlow = async () => {
     if (!newFlowData.name) return;
-    const flowData = {
-      id: editingFlowId || `flow_${Date.now()}`,
+    const stepsJson = JSON.stringify(editingSteps);
+    const validUuid = (v) => (v && uuidRegex.test(v) ? v : null);
+    const payload = {
       name: newFlowData.name,
-      description: newFlowData.description,
-      templateId: newFlowData.templateId,
-      attachmentIds: newFlowData.attachmentIds,
-      steps: editingSteps,
+      description: stepsJson,
+      contract_template_id: validUuid(newFlowData.templateId),
+      files: (newFlowData.attachmentIds || []).filter((id) =>
+        uuidRegex.test(id),
+      ),
     };
+    let error;
     if (editingFlowId) {
-      setFlows((prev) =>
-        prev.map((f) => (f.id === editingFlowId ? flowData : f)),
-      );
+      ({ error } = await supabase
+        .from("flow_header")
+        .update({ ...payload, update_at: new Date().toISOString() })
+        .eq("id", editingFlowId));
     } else {
-      setFlows((prev) => [...prev, flowData]);
+      ({ error } = await supabase.from("flow_header").insert(payload));
     }
+    if (error) {
+      alert(`保存に失敗しました: ${error.message}`);
+      return;
+    }
+    await fetchFlows();
     setFlowModalOpen(false);
   };
-  const deleteFlow = (id) => {
+
+  // === [feat/flow-db-storage] ===
+  // フローを flow_header テーブルから delete する。
+  const deleteFlow = async (id) => {
     if (window.confirm("このフローを削除してもよろしいですか？")) {
-      setFlows((prev) => prev.filter((f) => f.id !== id));
+      await supabase.from("flow_header").delete().eq("id", id);
+      await fetchFlows();
     }
   };
 
@@ -1955,17 +1964,18 @@ const AdminDashboard = ({
   const [selectedFlowForSession, setSelectedFlowForSession] = useState(
     flows[0]?.id,
   );
-
   const createSession = () => {
-    const newSession = {
-      id: Math.random().toString(36).substr(2, 9),
-      flowId: selectedFlowForSession,
-      flowName: flows.find((f) => f.id === selectedFlowForSession)?.name,
-      createdAt: new Date().toLocaleString(),
-      status: "unstarted",
-      data: null,
-    };
-    setSessions((prev) => [newSession, ...prev]);
+    setSessions((prev) => [
+      {
+        id: Math.random().toString(36).substr(2, 9),
+        flowId: selectedFlowForSession,
+        flowName: flows.find((f) => f.id === selectedFlowForSession)?.name,
+        createdAt: new Date().toLocaleString(),
+        status: "unstarted",
+        data: null,
+      },
+      ...prev,
+    ]);
   };
 
   // --- 設定画面用 ---
@@ -1988,7 +1998,6 @@ const AdminDashboard = ({
 
   return (
     <div className="min-h-screen bg-gray-100 flex">
-      {/* サイドバー */}
       <div className="w-64 bg-white shadow-lg flex flex-col z-10">
         <div className="p-6 border-b">
           <h2 className="text-xl font-bold text-gray-800 flex items-center">
@@ -2029,9 +2038,7 @@ const AdminDashboard = ({
         </div>
       </div>
 
-      {/* メインエリア */}
       <div className="flex-1 overflow-auto p-8 relative">
-        {/* 事前受付管理画面 */}
         {activeTab === "remote" && (
           <div className="max-w-6xl mx-auto">
             <h2 className="text-2xl font-bold text-gray-800 mb-6">
@@ -2163,6 +2170,7 @@ const AdminDashboard = ({
             </div>
           </div>
         )}
+
         {activeTab === "template" && (
           <div className="max-w-5xl mx-auto">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
@@ -2334,7 +2342,6 @@ const AdminDashboard = ({
           </div>
         )}
 
-        {/* === コンテンツ管理タブ === */}
         {activeTab === "upload" && (
           <div className="max-w-6xl mx-auto">
             <div className="flex space-x-1 mb-6 border-b">
@@ -2377,13 +2384,13 @@ const AdminDashboard = ({
                         className="aspect-video bg-gray-800 relative flex items-center justify-center cursor-pointer"
                         onClick={() => video.url && setPlayingVideo(video)}
                       >
-                        {thumb ? (
+                        {thumb && (
                           <img
                             src={thumb}
                             alt={video.title}
                             className="absolute inset-0 w-full h-full object-cover"
                           />
-                        ) : null}
+                        )}
                         <div className="absolute inset-0 bg-black/30 group-hover:bg-black/20 transition-colors flex items-center justify-center">
                           <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center group-hover:bg-white/30 transition-colors">
                             <Play
@@ -2469,8 +2476,6 @@ const AdminDashboard = ({
                 ))}
               </div>
             )}
-
-            {/* アップロード/編集モーダル */}
             {uploadModalOpen && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -2615,8 +2620,6 @@ const AdminDashboard = ({
                 </div>
               </div>
             )}
-
-            {/* 削除確認モーダル */}
             {deleteConfirmId && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
@@ -2647,8 +2650,6 @@ const AdminDashboard = ({
                 </div>
               </div>
             )}
-
-            {/* 動画再生プレビューモーダル */}
             {playingVideo && (
               <div
                 className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
@@ -2687,7 +2688,6 @@ const AdminDashboard = ({
             )}
           </div>
         )}
-        {/* === コンテンツ管理タブ ここまで === */}
 
         {activeTab === "flow" && (
           <div className="max-w-5xl mx-auto">
@@ -3182,10 +3182,6 @@ const CustomerServiceMode = ({
   const [signatureImage, setSignatureImage] = useState(null);
   const [staffFields, setStaffFields] = useState([]);
 
-  // === [feat/video-playback] ステップごとの視聴済み動画を保持 ===
-  // フロー内に複数の VIDEO ステップがある場合、それぞれの視聴状態を独立して保持する。
-  // 戻る操作で前の VIDEO ステップに戻った際にも視聴済みのままになるよう、
-  // ステップインデックスをキーに視聴済み動画 ID 配列を保持する。
   const [watchedVideosByStep, setWatchedVideosByStep] = useState({});
   const watchedVideoIds = watchedVideosByStep[currentStepIndex] || [];
 
@@ -3246,12 +3242,8 @@ const CustomerServiceMode = ({
   const currentStep = selectedFlow.steps[currentStepIndex];
   const nextStep = () => {
     if (currentStepIndex < selectedFlow.steps.length - 1) {
-      // === [feat/video-playback] ===
-      // 次のステップへ進む際、現ステップが VIDEO ならチェック状態をリセットする
-      // （次の VIDEO ステップで checkVideo が true のまま残らないように）。
-      if (currentStep.type === "VIDEO") {
+      if (currentStep.type === "VIDEO")
         setCustomerData((prev) => ({ ...prev, checkVideo: false }));
-      }
       setCurrentStepIndex((prev) => prev + 1);
     }
   };
@@ -3259,9 +3251,6 @@ const CustomerServiceMode = ({
     if (currentStepIndex > 0) {
       const prevIndex = currentStepIndex - 1;
       const prevStepDef = selectedFlow.steps[prevIndex];
-      // === [feat/video-playback] ===
-      // 戻り先が VIDEO ステップで、その VIDEO ステップの全動画が視聴済みなら
-      // 「全ての動画を視聴」チェックを自動で復活させる。
       if (prevStepDef?.type === "VIDEO") {
         const prevVideoIds = watchedVideosByStep[prevIndex] || [];
         const prevTargetIds = prevStepDef.videoIds || [];
@@ -3272,9 +3261,7 @@ const CustomerServiceMode = ({
         const allDone =
           prevPlaylist.length > 0 &&
           prevPlaylist.every((v) => prevVideoIds.includes(v.id));
-        if (allDone) {
-          setCustomerData((prev) => ({ ...prev, checkVideo: true }));
-        }
+        if (allDone) setCustomerData((prev) => ({ ...prev, checkVideo: true }));
       }
       setCurrentStepIndex(prevIndex);
     } else {
@@ -3308,11 +3295,10 @@ const CustomerServiceMode = ({
     );
   };
   const addStaffField = () => {
-    const newId = `custom_${Date.now()}`;
     setStaffFields([
       ...staffFields,
       {
-        id: newId,
+        id: `custom_${Date.now()}`,
         label: "新しい項目",
         value: "",
         type: "text",
@@ -3443,14 +3429,19 @@ const App = () => {
     phone: "03-XXXX-XXXX",
   });
   const [users, setUsers] = useState(MOCK_STAFF_USERS);
+  // === [feat/flow-db-storage] ===
+  // DBからのフロー読み込み完了まで待つためのフラグ
+  const [dataReady, setDataReady] = useState(false);
 
-  // リモートセッション管理
   const [sessions, setSessions] = useState([]);
   const [remoteSession, setRemoteSession] = useState(null);
 
-  // アプリ起動時にDBから動画一覧を読み込む（動画アップロード機能のため）
+  // === [feat/flow-db-storage] ===
+  // 起動時にDBから動画とフローを読み込む。
+  // flow_header テーブルが空の場合は DEFAULT_FLOWS を seed する。
   useEffect(() => {
-    const loadVideos = async () => {
+    const loadData = async () => {
+      // 動画
       const { data: videosData } = await supabase
         .from("videos")
         .select("*")
@@ -3479,24 +3470,84 @@ const App = () => {
         );
         setVideoPlaylist(videos);
       }
+
+      // フロー
+      const { data: flowsData } = await supabase
+        .from("flow_header")
+        .select("*")
+        .order("create_at", { ascending: false });
+      if (flowsData && flowsData.length > 0) {
+        const parsed = flowsData.map((row) => {
+          let steps = [];
+          try {
+            steps = JSON.parse(row.description || "[]");
+          } catch {
+            steps = [];
+          }
+          return {
+            id: row.id,
+            name: row.name,
+            description: "",
+            templateId: row.contract_template_id || "",
+            attachmentIds: row.files || [],
+            steps,
+          };
+        });
+        setFlows(parsed);
+      } else {
+        // DBが空の場合はデフォルトフローをseedする
+        for (const flow of DEFAULT_FLOWS) {
+          await supabase.from("flow_header").insert({
+            name: flow.name,
+            description: JSON.stringify(flow.steps),
+            contract_template_id: null,
+            files: [],
+          });
+        }
+        const { data: seeded } = await supabase
+          .from("flow_header")
+          .select("*")
+          .order("create_at", { ascending: false });
+        if (seeded && seeded.length > 0) {
+          const parsed = seeded.map((row) => {
+            let steps = [];
+            try {
+              steps = JSON.parse(row.description || "[]");
+            } catch {
+              steps = [];
+            }
+            return {
+              id: row.id,
+              name: row.name,
+              description: "",
+              templateId: "",
+              attachmentIds: [],
+              steps,
+            };
+          });
+          setFlows(parsed);
+        }
+      }
+
+      setDataReady(true);
     };
-    loadVideos();
+    loadData();
   }, []);
 
-  // URLパラメータからセッションIDを取得し、顧客用モードへ遷移
+  // URLパラメータからセッションIDを取得（dataReady後に実行）
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sid = params.get("sid");
     if (sid) {
       const session = sessions.find((s) => s.id === sid) || {
         id: sid,
-        flowId: flows[0].id,
+        flowId: flows[0]?.id,
         status: "unstarted",
       };
       setRemoteSession(session);
       setCurrentView("remote_customer");
     }
-  }, []);
+  }, [dataReady]);
 
   const handleLoginAdmin = () => setCurrentView("admin");
   const handleLoginStaff = () => setCurrentView("service");
@@ -3506,7 +3557,6 @@ const App = () => {
     window.history.pushState({}, "", window.location.pathname);
   };
 
-  // リモート接客完了時の処理
   const handleRemoteComplete = (sessionId, data) => {
     setSessions((prev) =>
       prev.map((s) =>
@@ -3516,6 +3566,16 @@ const App = () => {
     alert("送信が完了しました。店舗スタッフにお知らせください。");
     handleLogout();
   };
+
+  // === [feat/flow-db-storage] ===
+  // データ読み込み完了まではローディング表示
+  if (!dataReady) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-gray-500 text-sm">読み込み中...</div>
+      </div>
+    );
+  }
 
   return (
     <>
