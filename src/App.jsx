@@ -79,7 +79,7 @@ const DEFAULT_TEMPLATES = [
         label: "毛色",
         value: "",
         type: "text",
-        placeholder: "例：レッド",
+        placeholder: "例:レッド",
       },
       {
         id: "pet_gender",
@@ -102,7 +102,7 @@ const DEFAULT_TEMPLATES = [
         label: "種類",
         value: "",
         type: "text",
-        placeholder: "例：雑種（犬）",
+        placeholder: "例:雑種（犬）",
       },
       {
         id: "pet_name",
@@ -123,7 +123,7 @@ const DEFAULT_TEMPLATES = [
         label: "推定年齢",
         value: "",
         type: "text",
-        placeholder: "例：3歳くらい",
+        placeholder: "例:3歳くらい",
       },
       {
         id: "health_condition",
@@ -308,11 +308,6 @@ const ProgressBar = ({ steps, currentStepIndex }) => (
 );
 
 // === [feat/video-playback] HTML5 video化 & 視聴時間チェック対応 ===
-// 旧実装（タイマーによる擬似再生）から実 <video> 要素ベースに変更。
-// 早送り検出のため累積再生秒数 (_watchedSec) を videoRef に蓄積し、
-// ended 発火時に必要視聴時間に達していなければ「視聴時間不足」モーダルを表示し最初から見直しさせる。
-// 視聴済み状態は外部 state (completedVideoIds / onVideoComplete) で管理し、
-// 同じフロー内の複数 VIDEO ステップを跨いだ進捗保持・ロック制御を可能にする。
 const VideoStep = ({
   checkVideo,
   onCheckChange,
@@ -351,7 +346,6 @@ const VideoStep = ({
     return parts.length === 2 ? parts[0] * 60 + parts[1] : parts[0];
   };
 
-  // 動画切り替え時に内部状態をリセット
   useEffect(() => {
     setProgress(0);
     setIsPlaying(false);
@@ -362,7 +356,6 @@ const VideoStep = ({
     }
   }, [currentVideoIndex]);
 
-  // タブが非表示になったら自動 pause
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden && videoRef.current && !videoRef.current.paused) {
@@ -381,9 +374,6 @@ const VideoStep = ({
     const pct = (v.currentTime / v.duration) * 100;
     setProgress(pct);
 
-    // 累積再生時間を記録（早送りを除いた実際の視聴秒数）
-    // 直前の currentTime との差分が「自然な進行(≒0〜2秒)」の場合のみ加算する。
-    // シーク（早送り）した場合は差分が大きくなるため加算しない。
     const now = v.currentTime;
     const prev = v._lastTime ?? now;
     const delta = now - prev;
@@ -400,9 +390,6 @@ const VideoStep = ({
       const actualDuration = v ? v.duration : 0;
       const requiredSec = parseDurationSec(currentVideo.duration);
 
-      // 動画が最後まで再生された (ended 発火) としても、
-      // 早送りで currentTime が duration に達した場合も ended は発火する。
-      // そのため累積再生時間 watchedSec で実視聴量を判定する。
       const watchedSec = v ? v._watchedSec || 0 : 0;
       const threshold = actualDuration > 0 ? actualDuration : requiredSec;
 
@@ -445,7 +432,6 @@ const VideoStep = ({
       v.pause();
       setIsPlaying(false);
     } else {
-      // 初回再生時のみ開始時刻を記録
       if (!videoStartTimesRef.current[currentVideo.id]) {
         const startTime = Date.now();
         videoStartTimesRef.current[currentVideo.id] = startTime;
@@ -465,7 +451,6 @@ const VideoStep = ({
   };
 
   const selectVideo = (index) => {
-    // 前の動画を視聴済みでなければ次に進めない（ロック）
     if (
       index === 0 ||
       completedVideoIds.includes(activePlaylist[index - 1]?.id)
@@ -1337,9 +1322,9 @@ const CustomerRemoteMode = ({
       ),
     ),
   );
+
   const [customerId, setCustomerId] = useState(null);
   // === [feat/video-playback] 視聴済み動画の保持 ===
-  // リモート接客は基本的にステップを進む一方通行のため、ステップ切替時に視聴状態をリセットする。
   const [watchedVideoIds, setWatchedVideoIds] = useState([]);
   useEffect(() => {
     setWatchedVideoIds([]);
@@ -1350,11 +1335,30 @@ const CustomerRemoteMode = ({
     (t) => t.id === flow.templateId,
   )?.name;
 
+
+  // === [feat/signature-storage] ===
+  // SIGNATURE ステップ通過時に署名画像を Supabase Storage にアップロードし、
+  // sign_history テーブルへ履歴を保存する。
   const nextStep = async () => {
     if (currentStepIndex < remoteSteps.length - 1) {
+      if (currentStep.type === "SIGNATURE" && signatureImage) {
+        const blob = await (await fetch(signatureImage)).blob();
+        const filePath = `signatures/${Date.now()}.png`;
+        const { error: uploadError } = await supabase.storage
+          .from("signatures")
+          .upload(filePath, blob, { contentType: "image/png" });
+        if (!uploadError) {
+          await supabase.from("sign_history").insert({
+            contract_id: flow.id,
+            contract_name: flow.name || null,
+            sign_customer_id: customerId || null,
+            sign_path: filePath,
+          });
+        }
+      }
       // === [feat/customer-db-save] ===
       // お客様情報入力ステップを通過したら customers テーブルに保存
-      if (currentStep.type === "CUSTOMER_INFO") {
+      else if (currentStep.type === "CUSTOMER_INFO") {
         const { data } = await supabase
           .from("customers")
           .insert({
@@ -1725,7 +1729,6 @@ const AdminDashboard = ({
     });
   }, [videoPlaylist, generateThumbnail]);
 
-  // ファイル選択時にタイトル・再生時間を自動セット
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -1777,7 +1780,6 @@ const AdminDashboard = ({
     setSelectedFile(null);
   };
 
-  // 保存処理（動画はSupabaseへアップロード、PDFは元のローカル管理）
   const handleContentSave = async () => {
     if (!newContentData.title) return;
     if (contentTab === "video") {
@@ -1885,7 +1887,6 @@ const AdminDashboard = ({
         setUploadProgress("一覧を更新中...");
         await fetchVideos();
       } else {
-        // ドキュメント(PDF)はローカル管理のまま
         if (editingContentId) {
           setDocumentsList((prev) =>
             prev.map((d) =>
@@ -1910,7 +1911,6 @@ const AdminDashboard = ({
     }
   };
 
-  // 削除処理（動画はSupabase、PDFはローカル）
   const deleteContent = async (id) => {
     if (contentTab === "video") {
       const video = videoPlaylist.find((v) => v.id === id);
@@ -3278,9 +3278,6 @@ const CustomerServiceMode = ({
   const [customerId, setCustomerId] = useState(null);
 
   // === [feat/video-playback] ステップごとの視聴済み動画を保持 ===
-  // フロー内に複数の VIDEO ステップがある場合、それぞれの視聴状態を独立して保持する。
-  // 戻る操作で前の VIDEO ステップに戻った際にも視聴済みのままになるよう、
-  // ステップインデックスをキーに視聴済み動画 ID 配列を保持する。
   const [watchedVideosByStep, setWatchedVideosByStep] = useState({});
   const watchedVideoIds = watchedVideosByStep[currentStepIndex] || [];
 
@@ -3339,13 +3336,31 @@ const CustomerServiceMode = ({
   }
 
   const currentStep = selectedFlow.steps[currentStepIndex];
+  // === [feat/signature-storage] ===
+  // SIGNATURE ステップ通過時に署名画像を Supabase Storage にアップロードし、
+  // sign_history テーブルへ履歴を保存する
   const nextStep = async () => {
     if (currentStepIndex < selectedFlow.steps.length - 1) {
       // === [feat/video-playback] ===
-      // 次のステップへ進む際、現ステップが VIDEO ならチェック状態をリセットする
-      // （次の VIDEO ステップで checkVideo が true のまま残らないように）。
       if (currentStep.type === "VIDEO") {
         setCustomerData((prev) => ({ ...prev, checkVideo: false }));
+      }
+
+      // === [feat/signature-storage] ===
+      if (currentStep.type === "SIGNATURE" && signatureImage) {
+        const blob = await (await fetch(signatureImage)).blob();
+        const filePath = `signatures/${Date.now()}.png`;
+        const { error: uploadError } = await supabase.storage
+          .from("signatures")
+          .upload(filePath, blob, { contentType: "image/png" });
+        if (!uploadError) {
+          await supabase.from("sign_history").insert({
+            contract_id: selectedFlow.id,
+            contract_name: selectedFlow.name || null,
+            sign_customer_id: customerId || null,
+            sign_path: filePath,
+          });
+        }
       }
       // === [feat/customer-db-save] ===
       // お客様情報入力ステップを通過したら customers テーブルに保存
@@ -3371,8 +3386,6 @@ const CustomerServiceMode = ({
       const prevIndex = currentStepIndex - 1;
       const prevStepDef = selectedFlow.steps[prevIndex];
       // === [feat/video-playback] ===
-      // 戻り先が VIDEO ステップで、その VIDEO ステップの全動画が視聴済みなら
-      // 「全ての動画を視聴」チェックを自動で復活させる。
       if (prevStepDef?.type === "VIDEO") {
         const prevVideoIds = watchedVideosByStep[prevIndex] || [];
         const prevTargetIds = prevStepDef.videoIds || [];
@@ -3560,7 +3573,6 @@ const App = () => {
   const [sessions, setSessions] = useState([]);
   const [remoteSession, setRemoteSession] = useState(null);
 
-  // アプリ起動時にDBから動画一覧を読み込む（動画アップロード機能のため）
   useEffect(() => {
     const loadVideos = async () => {
       const { data: videosData } = await supabase
@@ -3595,7 +3607,6 @@ const App = () => {
     loadVideos();
   }, []);
 
-  // URLパラメータからセッションIDを取得し、顧客用モードへ遷移
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sid = params.get("sid");
@@ -3618,7 +3629,6 @@ const App = () => {
     window.history.pushState({}, "", window.location.pathname);
   };
 
-  // リモート接客完了時の処理
   const handleRemoteComplete = (sessionId, data) => {
     setSessions((prev) =>
       prev.map((s) =>
