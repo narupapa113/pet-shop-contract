@@ -1358,7 +1358,7 @@ const CustomerRemoteMode = ({
       }
       // === [feat/customer-db-save] ===
       // お客様情報入力ステップを通過したら customers テーブルに保存
-      esle if (currentStep.type === "CUSTOMER_INFO") {
+      else if (currentStep.type === "CUSTOMER_INFO") {
         const { data } = await supabase
           .from("customers")
           .insert({
