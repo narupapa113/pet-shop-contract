@@ -1313,7 +1313,6 @@ const CustomerRemoteMode = ({
     (t) => t.id === flow.templateId,
   )?.name;
 
-
   // === [feat/signature-storage] ===
   // SIGNATURE ステップ通過時に署名画像を Supabase Storage にアップロードし、
   // sign_history テーブルへ履歴を保存する。
@@ -2091,7 +2090,113 @@ const AdminDashboard = ({
       ...prev,
     ]);
   };
+  // --- 顧客管理 ---
+  const [customers, setCustomers] = useState([]);
+  const [customersLoading, setCustomersLoading] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState(null);
+  const [viewingCustomer, setViewingCustomer] = useState(null);
+  const [editCustomerData, setEditCustomerData] = useState({
+    name: "",
+    name_kana: "",
+    tell: "",
+    mail: "",
+    address: "",
+    remarks: "",
+    last_enter_store_at: "",
+  });
+  const [isSavingCustomer, setIsSavingCustomer] = useState(false);
 
+  const fetchCustomers = useCallback(async () => {
+    setCustomersLoading(true);
+    const { data } = await supabase
+      .from("customers")
+      .select("*")
+      .order("create_at", { ascending: false });
+    if (data) setCustomers(data);
+    setCustomersLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "customers") fetchCustomers();
+  }, [activeTab, fetchCustomers]);
+
+  const openEditCustomerModal = (customer) => {
+    setEditingCustomer(customer);
+    setEditCustomerData({
+      name: customer.name || "",
+      name_kana: customer.name_kana || "",
+      tell: customer.tell || "",
+      mail: customer.mail || "",
+      address: customer.address || "",
+      remarks: customer.remarks || "",
+      last_enter_store_at: customer.last_enter_store_at
+        ? new Date(customer.last_enter_store_at).toISOString().split("T")[0]
+        : "",
+    });
+  };
+
+  const closeEditCustomerModal = () => {
+    setEditingCustomer(null);
+    setEditCustomerData({
+      name: "",
+      name_kana: "",
+      tell: "",
+      mail: "",
+      address: "",
+      remarks: "",
+      last_enter_store_at: "",
+    });
+  };
+
+  const handleCustomerFieldChange = (key, value) => {
+    setEditCustomerData((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const saveCustomer = async () => {
+    if (!editingCustomer) return;
+    if (!editCustomerData.name.trim()) {
+      alert("お名前を入力してください");
+      return;
+    }
+    setIsSavingCustomer(true);
+    const { error } = await supabase
+      .from("customers")
+      .update({
+        name: editCustomerData.name,
+        name_kana: editCustomerData.name_kana || null,
+        tell: editCustomerData.tell || null,
+        mail: editCustomerData.mail || null,
+        address: editCustomerData.address || null,
+        remarks: editCustomerData.remarks || null,
+        last_enter_store_at: editCustomerData.last_enter_store_at
+          ? new Date(editCustomerData.last_enter_store_at).toISOString()
+          : null,
+        update_at: new Date().toISOString(),
+      })
+      .eq("id", editingCustomer.id);
+    setIsSavingCustomer(false);
+    if (error) {
+      alert(`保存に失敗しました: ${error.message}`);
+      return;
+    }
+    await fetchCustomers();
+    closeEditCustomerModal();
+  };
+
+  const openDetailCustomerModal = (customer) => {
+    setViewingCustomer(customer);
+  };
+
+  const closeDetailCustomerModal = () => {
+    setViewingCustomer(null);
+  };
+
+  const switchToEditFromDetail = () => {
+    if (viewingCustomer) {
+      openEditCustomerModal(viewingCustomer);
+      setViewingCustomer(null);
+    }
+  };
   // --- 設定画面用 ---
   const [settingsTab, setSettingsTab] = useState("company");
   const [tempCompanyInfo, setTempCompanyInfo] = useState(companyInfo);
@@ -3159,54 +3264,373 @@ const AdminDashboard = ({
             <h3 className="text-lg font-bold text-gray-800 mb-4">
               顧客情報管理
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {MOCK_CUSTOMERS.map((customer) => (
-                <div
-                  key={customer.id}
-                  className="border border-gray-200 rounded-xl p-5 hover:shadow-md transition-shadow"
-                >
-                  <div className="flex items-center mb-4">
-                    <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 mr-4">
-                      <User size={24} />
+            {customersLoading ? (
+              <div className="flex items-center justify-center py-20 text-gray-400">
+                読み込み中...
+              </div>
+            ) : customers.length === 0 ? (
+              <div className="flex items-center justify-center py-20 text-gray-400">
+                顧客データがありません
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {customers.map((customer) => (
+                  <div
+                    key={customer.id}
+                    className="border border-gray-200 rounded-xl p-5 bg-white hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-center mb-4">
+                      <div className="w-11 h-11 bg-gray-100 rounded-full flex items-center justify-center text-gray-400 mr-3 flex-shrink-0">
+                        <User size={22} />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-gray-800 text-base leading-tight">
+                          {customer.name || "—"}
+                        </h4>
+                        {customer.name_kana && (
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {customer.name_kana}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-2 text-sm text-gray-600 mb-4">
+                      {customer.tell && (
+                        <div className="flex items-center gap-2">
+                          <Phone
+                            size={14}
+                            className="text-gray-400 flex-shrink-0"
+                          />
+                          <span>{customer.tell}</span>
+                        </div>
+                      )}
+                      {customer.mail && (
+                        <div className="flex items-center gap-2">
+                          <Mail
+                            size={14}
+                            className="text-gray-400 flex-shrink-0"
+                          />
+                          <span className="truncate text-gray-700">
+                            {customer.mail}
+                          </span>
+                        </div>
+                      )}
+                      {customer.last_enter_store_at && (
+                        <div className="flex items-center gap-2">
+                          <Calendar
+                            size={14}
+                            className="text-gray-400 flex-shrink-0"
+                          />
+                          <span>
+                            最終来店:{" "}
+                            {new Date(
+                              customer.last_enter_store_at,
+                            ).toLocaleDateString("ja-JP")}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    {customer.remarks && (
+                      <div className="border-t border-gray-100 pt-3 mb-4 text-sm text-gray-600">
+                        所有ペット:{" "}
+                        <span className="font-bold text-gray-800">
+                          {customer.remarks}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => openEditCustomerModal(customer)}
+                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+                      >
+                        編集
+                      </button>
+                      <button
+                        onClick={() => openDetailCustomerModal(customer)}
+                        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition-colors font-medium"
+                      >
+                        詳細
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {editingCustomer && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+                  <div className="p-6 border-b flex justify-between items-center">
+                    <h3 className="text-xl font-bold text-gray-800">
+                      顧客情報の編集
+                    </h3>
+                    <button
+                      onClick={closeEditCustomerModal}
+                      className="text-gray-400 hover:text-gray-600"
+                      disabled={isSavingCustomer}
+                    >
+                      <X size={24} />
+                    </button>
+                  </div>
+                  <div className="p-6 space-y-4 overflow-y-auto">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        お名前 <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        value={editCustomerData.name}
+                        onChange={(e) =>
+                          handleCustomerFieldChange("name", e.target.value)
+                        }
+                        placeholder="山田 太郎"
+                      />
                     </div>
                     <div>
-                      <h4 className="font-bold text-gray-800">
-                        {customer.name}
-                      </h4>
-                      <p className="text-xs text-gray-400">
-                        {customer.nameKana}
-                      </p>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        フリガナ
+                      </label>
+                      <input
+                        type="text"
+                        className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        value={editCustomerData.name_kana}
+                        onChange={(e) =>
+                          handleCustomerFieldChange("name_kana", e.target.value)
+                        }
+                        placeholder="ヤマダ タロウ"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        電話番号
+                      </label>
+                      <input
+                        type="tel"
+                        className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        value={editCustomerData.tell}
+                        onChange={(e) =>
+                          handleCustomerFieldChange("tell", e.target.value)
+                        }
+                        placeholder="09012345678"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        メールアドレス
+                      </label>
+                      <input
+                        type="email"
+                        className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        value={editCustomerData.mail}
+                        onChange={(e) =>
+                          handleCustomerFieldChange("mail", e.target.value)
+                        }
+                        placeholder="example@email.com"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        住所
+                      </label>
+                      <input
+                        type="text"
+                        className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        value={editCustomerData.address}
+                        onChange={(e) =>
+                          handleCustomerFieldChange("address", e.target.value)
+                        }
+                        placeholder="東京都..."
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        最終来店日
+                      </label>
+                      <input
+                        type="date"
+                        className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        value={editCustomerData.last_enter_store_at}
+                        onChange={(e) =>
+                          handleCustomerFieldChange(
+                            "last_enter_store_at",
+                            e.target.value,
+                          )
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        所有ペット / 備考
+                      </label>
+                      <textarea
+                        className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 resize-none"
+                        rows={2}
+                        value={editCustomerData.remarks}
+                        onChange={(e) =>
+                          handleCustomerFieldChange("remarks", e.target.value)
+                        }
+                        placeholder="例: トイプードル"
+                      />
                     </div>
                   </div>
-                  <div className="space-y-2 text-sm text-gray-600 mb-4">
-                    <div className="flex items-center">
-                      <Phone size={14} className="mr-2 text-gray-400" />{" "}
-                      {customer.phone}
-                    </div>
-                    <div className="flex items-center">
-                      <Mail size={14} className="mr-2 text-gray-400" />{" "}
-                      {customer.email}
-                    </div>
-                    <div className="flex items-center">
-                      <Calendar size={14} className="mr-2 text-gray-400" />{" "}
-                      最終来店: {customer.lastVisit}
-                    </div>
-                    <div className="mt-2 pt-2 border-t border-gray-100">
-                      <span className="text-xs text-gray-400">所有ペット:</span>{" "}
-                      <span className="font-medium">{customer.pet}</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-end space-x-2">
-                    <button className="px-3 py-1 border border-gray-300 rounded text-xs text-gray-600 hover:bg-gray-50">
-                      編集
+                  <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3">
+                    <button
+                      onClick={closeEditCustomerModal}
+                      disabled={isSavingCustomer}
+                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-white font-medium disabled:opacity-50"
+                    >
+                      キャンセル
                     </button>
-                    <button className="px-3 py-1 bg-blue-50 text-blue-600 rounded text-xs hover:bg-blue-100 font-medium">
-                      詳細
+                    <button
+                      onClick={saveCustomer}
+                      disabled={
+                        isSavingCustomer || !editCustomerData.name.trim()
+                      }
+                      className={`px-6 py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center ${
+                        isSavingCustomer || !editCustomerData.name.trim()
+                          ? "opacity-50 cursor-not-allowed"
+                          : "hover:bg-blue-700 shadow-md"
+                      }`}
+                    >
+                      <Save size={16} className="mr-2" />
+                      {isSavingCustomer ? "保存中..." : "保存する"}
                     </button>
                   </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
+            {viewingCustomer && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+                  <div className="p-6 border-b flex justify-between items-center">
+                    <h3 className="text-xl font-bold text-gray-800 flex items-center">
+                      <User size={22} className="mr-2 text-blue-600" />
+                      顧客情報の詳細
+                    </h3>
+                    <button
+                      onClick={closeDetailCustomerModal}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <X size={24} />
+                    </button>
+                  </div>
+                  <div className="p-6 space-y-4 overflow-y-auto">
+                    <div className="flex items-center pb-4 border-b border-gray-100">
+                      <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center text-gray-400 mr-4 flex-shrink-0">
+                        <User size={28} />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-gray-800 text-xl leading-tight">
+                          {viewingCustomer.name || "—"}
+                        </h4>
+                        {viewingCustomer.name_kana && (
+                          <p className="text-sm text-gray-400 mt-1">
+                            {viewingCustomer.name_kana}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 mb-1">
+                        電話番号
+                      </label>
+                      <div className="flex items-center text-gray-800">
+                        <Phone
+                          size={16}
+                          className="text-gray-400 mr-2 flex-shrink-0"
+                        />
+                        <span>{viewingCustomer.tell || "—"}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 mb-1">
+                        メールアドレス
+                      </label>
+                      <div className="flex items-center text-gray-800">
+                        <Mail
+                          size={16}
+                          className="text-gray-400 mr-2 flex-shrink-0"
+                        />
+                        <span className="break-all">
+                          {viewingCustomer.mail || "—"}
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 mb-1">
+                        住所
+                      </label>
+                      <div className="flex items-start text-gray-800">
+                        <MapPin
+                          size={16}
+                          className="text-gray-400 mr-2 mt-1 flex-shrink-0"
+                        />
+                        <span>{viewingCustomer.address || "—"}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 mb-1">
+                        最終来店日
+                      </label>
+                      <div className="flex items-center text-gray-800">
+                        <Calendar
+                          size={16}
+                          className="text-gray-400 mr-2 flex-shrink-0"
+                        />
+                        <span>
+                          {viewingCustomer.last_enter_store_at
+                            ? new Date(
+                                viewingCustomer.last_enter_store_at,
+                              ).toLocaleDateString("ja-JP")
+                            : "—"}
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 mb-1">
+                        所有ペット / 備考
+                      </label>
+                      <p className="text-gray-800 whitespace-pre-wrap">
+                        {viewingCustomer.remarks || "—"}
+                      </p>
+                    </div>
+                    {viewingCustomer.create_at && (
+                      <div className="pt-4 border-t border-gray-100 text-xs text-gray-400">
+                        <p>
+                          登録日時:{" "}
+                          {new Date(viewingCustomer.create_at).toLocaleString(
+                            "ja-JP",
+                          )}
+                        </p>
+                        {viewingCustomer.update_at && (
+                          <p className="mt-1">
+                            最終更新:{" "}
+                            {new Date(viewingCustomer.update_at).toLocaleString(
+                              "ja-JP",
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3">
+                    <button
+                      onClick={closeDetailCustomerModal}
+                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-white font-medium"
+                    >
+                      閉じる
+                    </button>
+                    <button
+                      onClick={switchToEditFromDetail}
+                      className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-md flex items-center"
+                    >
+                      <Edit2 size={16} className="mr-2" />
+                      編集する
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
         {activeTab === "settings" && (
@@ -3297,7 +3721,6 @@ const CustomerServiceMode = ({
   const [signatureImage, setSignatureImage] = useState(null);
   const [staffFields, setStaffFields] = useState([]);
   const [customerId, setCustomerId] = useState(null);
-
 
   // === [feat/video-playback] ステップごとの視聴済み動画を保持 ===
   const [watchedVideosByStep, setWatchedVideosByStep] = useState({});
