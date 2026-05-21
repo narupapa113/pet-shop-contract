@@ -1335,7 +1335,7 @@ const CustomerRemoteMode = ({
       }
       // === [feat/customer-db-save] ===
       // お客様情報入力ステップを通過したら customers テーブルに保存
-      else if (currentStep.type === "CUSTOMER_INFO") {
+      if (currentStep.type === "CUSTOMER_INFO") {
         const { data } = await supabase
           .from("customers")
           .insert({
@@ -1348,6 +1348,38 @@ const CustomerRemoteMode = ({
           .select("id")
           .maybeSingle();
         if (data?.id) setCustomerId(data.id);
+      }
+
+      // === [feat/save-staff-input-to-db] ===
+      // スタッフ入力ステップを通過したら、
+      // 1) 入力内容全体を sign_input テーブルに JSON で保存
+      // 2) ペットの種類を customers.remarks カラムに保存
+      if (currentStep.type === "STAFF_INPUT") {
+        const signItemValue = JSON.stringify(
+          staffFields.reduce((acc, field) => {
+            acc[field.label] = field.value;
+            return acc;
+          }, {}),
+        );
+        await supabase.from("sign_input").insert({
+          sign_item_no: currentStepIndex,
+          sign_item_value: signItemValue,
+        });
+
+        // ペットの種類を customers.remarks に保存
+        const petTypeField = staffFields.find(
+          (f) =>
+            f.id === "pet_type" ||
+            f.label === "ペットの種類" ||
+            f.label === "種類",
+        );
+        if (petTypeField?.value && customerId) {
+          const { error: remarksError } = await supabase
+            .from("customers")
+            .update({ remarks: petTypeField.value })
+            .eq("id", customerId);
+          if (remarksError) console.error("remarks 更新エラー:", remarksError);
+        }
       }
       setCurrentStepIndex((prev) => prev + 1);
     }
