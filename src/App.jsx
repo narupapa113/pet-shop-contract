@@ -3994,7 +3994,29 @@ const CustomerServiceMode = ({
             signatureImage={signatureImage}
             onPrev={prevStep}
             onPrint={handlePrint}
-            onFinish={() => setSelectedFlow(null)}
+            // === [feat/update-last-enter-store-at] ===
+            // 接客終了時に customers.last_enter_store_at を今日の日付で更新
+            onFinish={async () => {
+              if (customerId) {
+                try {
+                  const { error: lastEnterError } = await supabase
+                    .from("customers")
+                    .update({
+                      last_enter_store_at: new Date().toISOString(),
+                    })
+                    .eq("id", customerId);
+                  if (lastEnterError) {
+                    console.error(
+                      "last_enter_store_at 更新エラー:",
+                      lastEnterError,
+                    );
+                  }
+                } catch (err) {
+                  console.error("接客終了処理エラー:", err);
+                }
+              }
+              setSelectedFlow(null);
+            }}
             companyInfo={companyInfo}
             templateName={templateName}
             documentsList={documentsList}
