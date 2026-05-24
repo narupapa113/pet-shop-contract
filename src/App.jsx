@@ -3758,11 +3758,27 @@ const CustomerServiceMode = ({
   const [watchedVideosByStep, setWatchedVideosByStep] = useState({});
   const watchedVideoIds = watchedVideosByStep[currentStepIndex] || [];
 
+  // === [fix/reset-step-and-upsert-customer] ===
+  // フロー選択時に currentStepIndex と関連 state をリセット
+  // (前回最終ステップが残っていて、契約書発行画面に直接遷移する不具合を解消)
   const handleFlowSelect = (flow) => {
     setSelectedFlow(flow);
     const template =
       staffTemplates.find((t) => t.id === flow.templateId) || staffTemplates[0];
     setStaffFields(JSON.parse(JSON.stringify(template.fields)));
+    setCurrentStepIndex(0);
+    setCustomerData({
+      name: "",
+      nameKana: "",
+      address: "",
+      phone: "",
+      email: "",
+      checkVideo: false,
+      checkTerms: false,
+    });
+    setSignatureImage(null);
+    setCustomerId(null);
+    setWatchedVideosByStep({});
   };
 
   if (!selectedFlow) {
@@ -3839,68 +3855,21 @@ const CustomerServiceMode = ({
           });
         }
       }
- // === [feat/upsert-customer-by-tell] ===
+      // === [feat/customer-db-save] ===
       // お客様情報入力ステップを通過したら customers テーブルに保存
-      // 電話番号(tell)が既存レコードと一致する場合は UPDATE(update_at 更新、create_at は維持)
-      // 一致しない場合は INSERT(新規作成)
       if (currentStep.type === "CUSTOMER_INFO") {
-        try {
-          const phone = customerData.phone || null;
-          let existing = null;
-
-          // 電話番号がある場合のみ既存レコードを検索
-          if (phone) {
-            const { data: found, error: findError } = await supabase
-              .from("customers")
-              .select("id")
-              .eq("tell", phone)
-              .maybeSingle();
-            if (findError) {
-              console.error("customers 検索エラー:", findError);
-            }
-            existing = found;
-          }
-
-          if (existing?.id) {
-            // 既存顧客 → UPDATE(create_at は更新せず、update_at のみ更新)
-            const { error: updateError } = await supabase
-              .from("customers")
-              .update({
-                name: customerData.name,
-                name_kana: customerData.nameKana || null,
-                tell: phone,
-                mail: customerData.email || null,
-                address: customerData.address || null,
-                update_at: new Date().toISOString(),
-              })
-              .eq("id", existing.id);
-            if (updateError) {
-              console.error("customers 更新エラー:", updateError);
-            } else {
-              setCustomerId(existing.id);
-            }
-          } else {
-            // 新規顧客 → INSERT(create_at は DB のデフォルトで自動セット想定)
-            const { data: inserted, error: insertError } = await supabase
-              .from("customers")
-              .insert({
-                name: customerData.name,
-                name_kana: customerData.nameKana || null,
-                tell: phone,
-                mail: customerData.email || null,
-                address: customerData.address || null,
-              })
-              .select("id")
-              .maybeSingle();
-            if (insertError) {
-              console.error("customers 作成エラー:", insertError);
-            } else if (inserted?.id) {
-              setCustomerId(inserted.id);
-            }
-          }
-        } catch (err) {
-          console.error("CUSTOMER_INFO 処理エラー:", err);
-        }
+        const { data } = await supabase
+          .from("customers")
+          .insert({
+            name: customerData.name,
+            name_kana: customerData.nameKana || null,
+            tell: customerData.phone || null,
+            mail: customerData.email || null,
+            address: customerData.address || null,
+          })
+          .select("id")
+          .maybeSingle();
+        if (data?.id) setCustomerId(data.id);
       }
       setCurrentStepIndex((prev) => prev + 1);
     }
@@ -3929,6 +3898,7 @@ const CustomerServiceMode = ({
         window.confirm("メニュー選択に戻りますか？入力内容は破棄されます。")
       ) {
         setSelectedFlow(null);
+        setCurrentStepIndex(0);
         setCustomerData({
           name: "",
           nameKana: "",
@@ -3939,6 +3909,7 @@ const CustomerServiceMode = ({
           checkTerms: false,
         });
         setSignatureImage(null);
+        setCustomerId(null);
         setWatchedVideosByStep({});
       }
     }
@@ -4041,8 +4012,8 @@ const CustomerServiceMode = ({
             signatureImage={signatureImage}
             onPrev={prevStep}
             onPrint={handlePrint}
-            // === [feat/update-last-enter-store-at] ===
-            // 接客終了時に customers.last_enter_store_at を今日の日付で更新
+            // === [fix/reset-step-and-upsert-customer] ===
+            // 接客終了時に last_enter_store_at 更新 + state を全リセット
             onFinish={async () => {
               if (customerId) {
                 try {
@@ -4063,6 +4034,19 @@ const CustomerServiceMode = ({
                 }
               }
               setSelectedFlow(null);
+              setCurrentStepIndex(0);
+              setCustomerData({
+                name: "",
+                nameKana: "",
+                address: "",
+                phone: "",
+                email: "",
+                checkVideo: false,
+                checkTerms: false,
+              });
+              setSignatureImage(null);
+              setCustomerId(null);
+              setWatchedVideosByStep({});
             }}
             companyInfo={companyInfo}
             templateName={templateName}
