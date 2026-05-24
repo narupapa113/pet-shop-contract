@@ -3839,22 +3839,70 @@ const CustomerServiceMode = ({
           });
         }
       }
-      // === [feat/customer-db-save] ===
-      // お客様情報入力ステップを通過したら customers テーブルに保存
+ // === [feat/customer-db-save] ===
       if (currentStep.type === "CUSTOMER_INFO") {
         const { data } = await supabase
           .from("customers")
-          .insert({
-            name: customerData.name,
-            name_kana: customerData.nameKana || null,
-            tell: customerData.phone || null,
-            mail: customerData.email || null,
-            address: customerData.address || null,
-          })
+          .insert({...})
           .select("id")
           .maybeSingle();
         if (data?.id) setCustomerId(data.id);
       }
+
+      // === [feat/save-staff-input-to-db] ===
+      // スタッフ入力ステップを通過したら、
+      // 1) 入力内容全体を sign_input テーブルに JSON で保存
+      // 2) ペットの種類を customers.remarks カラムに保存
+      if (currentStep.type === "STAFF_INPUT") {
+        try {
+          const signItemValue = JSON.stringify(
+            staffFields.reduce((acc, field) => {
+              acc[field.label] = field.value;
+              return acc;
+            }, {}),
+          );
+          const { error: signInputError } = await supabase
+            .from("sign_input")
+            .insert({
+              sign_item_no: currentStepIndex,
+              sign_item_value: signItemValue,
+            });
+          if (signInputError) {
+            console.error("sign_input 保存エラー:", signInputError);
+          }
+
+          // ペットの種類を customers.remarks に保存
+          const petTypeField = staffFields.find(
+            (f) =>
+              f.id === "pet_type" ||
+              f.label === "ペットの種類" ||
+              f.label === "種類",
+          );
+          if (petTypeField?.value && customerId) {
+            const { error: remarksError } = await supabase
+              .from("customers")
+              .update({
+                remarks: petTypeField.value,
+                update_at: new Date().toISOString(),
+              })
+              .eq("id", customerId);
+            if (remarksError) {
+              console.error("remarks 更新エラー:", remarksError);
+            } else {
+              console.log("remarks を更新しました:", petTypeField.value);
+            }
+          } else if (!customerId) {
+            console.warn("customerId が無いため remarks を更新できません");
+          } else if (!petTypeField?.value) {
+            console.warn(
+              "ペットの種類が入力されていないため remarks を更新しません",
+            );
+          }
+        } catch (err) {
+          console.error("STAFF_INPUT 処理エラー:", err);
+        }
+      }
+
       setCurrentStepIndex((prev) => prev + 1);
     }
   };
