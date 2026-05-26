@@ -3292,7 +3292,7 @@ const AdminDashboard = ({
           </div>
         )}
         {activeTab === "customers" && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-[500px]">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-[500px] max-w-full">
             <h3 className="text-lg font-bold text-gray-800 mb-4">
               顧客情報管理
             </h3>
@@ -3305,87 +3305,71 @@ const AdminDashboard = ({
                 顧客データがありません
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {customers.map((customer) => (
-                  <div
-                    key={customer.id}
-                    className="border border-gray-200 rounded-xl p-5 bg-white hover:shadow-md transition-shadow"
-                  >
-                    <div className="flex items-center mb-4">
-                      <div className="w-11 h-11 bg-gray-100 rounded-full flex items-center justify-center text-gray-400 mr-3 flex-shrink-0">
-                        <User size={22} />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-gray-800 text-base leading-tight">
+              <div className="border rounded-lg overflow-x-auto">
+                <table className="w-full text-sm text-left min-w-[900px]">
+                  <thead className="bg-gray-50 text-gray-700 font-medium">
+                    <tr>
+                      <th className="px-4 py-3 whitespace-nowrap">名前</th>
+                      <th className="px-4 py-3 whitespace-nowrap">フリガナ</th>
+                      <th className="px-4 py-3 whitespace-nowrap">電話番号</th>
+                      <th className="px-4 py-3 whitespace-nowrap">メール</th>
+                      <th className="px-4 py-3 whitespace-nowrap">最終来店</th>
+                      <th className="px-4 py-3 whitespace-nowrap">
+                        所有ペット
+                      </th>
+                      <th className="px-4 py-3 whitespace-nowrap">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {customers.map((customer) => (
+                      <tr key={customer.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">
                           {customer.name || "—"}
-                        </h4>
-                        {customer.name_kana && (
-                          <p className="text-xs text-gray-400 mt-0.5">
-                            {customer.name_kana}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="space-y-2 text-sm text-gray-600 mb-4">
-                      {customer.tell && (
-                        <div className="flex items-center gap-2">
-                          <Phone
-                            size={14}
-                            className="text-gray-400 flex-shrink-0"
-                          />
-                          <span>{customer.tell}</span>
-                        </div>
-                      )}
-                      {customer.mail && (
-                        <div className="flex items-center gap-2">
-                          <Mail
-                            size={14}
-                            className="text-gray-400 flex-shrink-0"
-                          />
-                          <span className="truncate text-gray-700">
-                            {customer.mail}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                          {customer.name_kana || "—"}
+                        </td>
+                        <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
+                          {customer.tell || "—"}
+                        </td>
+                        <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
+                          <span
+                            className="truncate block max-w-[200px]"
+                            title={customer.mail || ""}
+                          >
+                            {customer.mail || "—"}
                           </span>
-                        </div>
-                      )}
-                      {customer.last_enter_store_at && (
-                        <div className="flex items-center gap-2">
-                          <Calendar
-                            size={14}
-                            className="text-gray-400 flex-shrink-0"
-                          />
-                          <span>
-                            最終来店:{" "}
-                            {new Date(
-                              customer.last_enter_store_at,
-                            ).toLocaleDateString("ja-JP")}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    {customer.remarks && (
-                      <div className="border-t border-gray-100 pt-3 mb-4 text-sm text-gray-600">
-                        所有ペット:{" "}
-                        <span className="font-bold text-gray-800">
-                          {customer.remarks}
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => openEditCustomerModal(customer)}
-                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-                      >
-                        編集
-                      </button>
-                      <button
-                        onClick={() => openDetailCustomerModal(customer)}
-                        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition-colors font-medium"
-                      >
-                        詳細
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                          {customer.last_enter_store_at
+                            ? new Date(
+                                customer.last_enter_store_at,
+                              ).toLocaleDateString("ja-JP")
+                            : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
+                          {customer.remarks || "—"}
+                        </td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => openEditCustomerModal(customer)}
+                              className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+                            >
+                              編集
+                            </button>
+                            <button
+                              onClick={() => openDetailCustomerModal(customer)}
+                              className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition-colors font-medium"
+                            >
+                              詳細
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
             {editingCustomer && (
@@ -3839,7 +3823,7 @@ const CustomerServiceMode = ({
           });
         }
       }
- // === [feat/upsert-customer-by-tell] ===
+      // === [feat/upsert-customer-by-tell] ===
       // お客様情報入力ステップを通過したら customers テーブルに保存
       // 電話番号(tell)が既存レコードと一致する場合は UPDATE(update_at 更新、create_at は維持)
       // 一致しない場合は INSERT(新規作成)
