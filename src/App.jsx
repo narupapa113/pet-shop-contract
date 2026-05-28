@@ -3342,11 +3342,27 @@ const CustomerServiceMode = ({
   const [watchedVideosByStep, setWatchedVideosByStep] = useState({});
   const watchedVideoIds = watchedVideosByStep[currentStepIndex] || [];
 
+  // === [fix/reset-step-and-upsert-customer] ===
+  // フロー選択時に currentStepIndex と関連 state をリセット
+  // (前回最終ステップが残っていて、契約書発行画面に直接遷移する不具合を解消)
   const handleFlowSelect = (flow) => {
     setSelectedFlow(flow);
     const template =
       staffTemplates.find((t) => t.id === flow.templateId) || staffTemplates[0];
     setStaffFields(JSON.parse(JSON.stringify(template.fields)));
+    setCurrentStepIndex(0);
+    setCustomerData({
+      name: "",
+      nameKana: "",
+      address: "",
+      phone: "",
+      email: "",
+      checkVideo: false,
+      checkTerms: false,
+    });
+    setSignatureImage(null);
+    setCustomerId(null);
+    setWatchedVideosByStep({});
   };
 
   if (!selectedFlow) {
@@ -3432,6 +3448,7 @@ const CustomerServiceMode = ({
         window.confirm("メニュー選択に戻りますか？入力内容は破棄されます。")
       ) {
         setSelectedFlow(null);
+        setCurrentStepIndex(0);
         setCustomerData({
           name: "",
           nameKana: "",
@@ -3442,6 +3459,7 @@ const CustomerServiceMode = ({
           checkTerms: false,
         });
         setSignatureImage(null);
+        setCustomerId(null);
         setWatchedVideosByStep({});
       }
     }
