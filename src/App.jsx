@@ -1322,29 +1322,57 @@ const CustomerRemoteMode = ({
     }
   };
 
-  // === [feat/finalize-on-finish] ===
+  // === [feat/finalize-on-finish] + [feat/upsert-customer-by-tell] ===
   const finalizeContract = async () => {
     try {
-      // 1) お客様情報を customers テーブルに保存
+      // 1) customers を電話番号で upsert
       let savedCustomerId = null;
       if (customerData.name) {
-        const { data: customerRow, error: customerError } = await supabase
-          .from("customers")
-          .insert({
-            name: customerData.name,
-            name_kana: customerData.nameKana || null,
-            tell: customerData.phone || null,
-            mail: customerData.email || null,
-            address: customerData.address || null,
-          })
-          .select("id")
-          .maybeSingle();
-        if (customerError) throw customerError;
-        savedCustomerId = customerRow?.id || null;
+        const phone = customerData.phone || null;
+        let existing = null;
+
+        if (phone) {
+          const { data: found } = await supabase
+            .from("customers")
+            .select("id")
+            .eq("tell", phone)
+            .maybeSingle();
+          existing = found;
+        }
+
+        if (existing?.id) {
+          const { error: updateError } = await supabase
+            .from("customers")
+            .update({
+              name: customerData.name,
+              name_kana: customerData.nameKana || null,
+              tell: phone,
+              mail: customerData.email || null,
+              address: customerData.address || null,
+              update_at: new Date().toISOString(),
+            })
+            .eq("id", existing.id);
+          if (updateError) throw updateError;
+          savedCustomerId = existing.id;
+        } else {
+          const { data: inserted, error: insertError } = await supabase
+            .from("customers")
+            .insert({
+              name: customerData.name,
+              name_kana: customerData.nameKana || null,
+              tell: phone,
+              mail: customerData.email || null,
+              address: customerData.address || null,
+            })
+            .select("id")
+            .maybeSingle();
+          if (insertError) throw insertError;
+          savedCustomerId = inserted?.id || null;
+        }
         if (savedCustomerId) setCustomerId(savedCustomerId);
       }
 
-      // 2) 署名画像を Storage にアップロード + sign_history に INSERT
+      // 2) 署名アップロード + sign_history INSERT
       if (signatureImage) {
         const blob = await (await fetch(signatureImage)).blob();
         const filePath = `signatures/${Date.now()}.png`;
@@ -1360,7 +1388,6 @@ const CustomerRemoteMode = ({
         });
       }
 
-      // 完了通知
       onComplete(remoteSession.id, { ...customerData, signatureImage });
     } catch (err) {
       console.error("保存エラー:", err);
@@ -3456,27 +3483,63 @@ const CustomerServiceMode = ({
   const templateName = staffTemplates.find(
     (t) => t.id === selectedFlow.templateId,
   )?.name;
-  // === [feat/finalize-on-finish] ===
+  // === [feat/finalize-on-finish] + [feat/upsert-customer-by-tell] ===
   // 「接客終了」ボタン押下時にすべてのDBへの保存を一括実行する。
-  // ここで初めて customers / sign_history / sign_input への INSERT が走る。
+  // customers については電話番号(tell)で既存検索し、
+  // あれば UPDATE(create_at 維持、update_at 更新)、なければ INSERT する。
   const finalizeContract = async () => {
     try {
-      // 1) お客様情報を customers テーブルに保存
+      // 1) お客様情報を customers テーブルに upsert (電話番号基準)
       let savedCustomerId = null;
       if (customerData.name) {
-        const { data: customerRow, error: customerError } = await supabase
-          .from("customers")
-          .insert({
-            name: customerData.name,
-            name_kana: customerData.nameKana || null,
-            tell: customerData.phone || null,
-            mail: customerData.email || null,
-            address: customerData.address || null,
-          })
-          .select("id")
-          .maybeSingle();
-        if (customerError) throw customerError;
-        savedCustomerId = customerRow?.id || null;
+        s;
+        const phone = customerData.phone || null;
+        let existing = null;
+
+        // 電話番号がある場合のみ既存レコードを検索
+        if (phone) {
+          const { data: found, error: findError } = await supabase
+            .from("customers")
+            .select("id")
+            .eq("tell", phone)
+            .maybeSingle();
+          if (findError) {
+            console.error("customers 検索エラー:", findError);
+          }
+          existing = found;
+        }
+
+        if (existing?.id) {
+          // 既存顧客 → UPDATE(create_at は更新せず、update_at のみ更新)
+          const { error: updateError } = await supabase
+            .from("customers")
+            .update({
+              name: customerData.name,
+              name_kana: customerData.nameKana || null,
+              tell: phone,
+              mail: customerData.email || null,
+              address: customerData.address || null,
+              update_at: new Date().toISOString(),
+            })
+            .eq("id", existing.id);
+          if (updateError) throw updateError;
+          savedCustomerId = existing.id;
+        } else {
+          // 新規顧客 → INSERT
+          const { data: inserted, error: insertError } = await supabase
+            .from("customers")
+            .insert({
+              name: customerData.name,
+              name_kana: customerData.nameKana || null,
+              tell: phone,
+              mail: customerData.email || null,
+              address: customerData.address || null,
+            })
+            .select("id")
+            .maybeSingle();
+          if (insertError) throw insertError;
+          savedCustomerId = inserted?.id || null;
+        }
         if (savedCustomerId) setCustomerId(savedCustomerId);
       }
 
@@ -3496,7 +3559,7 @@ const CustomerServiceMode = ({
         });
       }
 
-      // 3) スタッフ入力内容を sign_input に保存
+      // 3) スタッフ入力内容を sign_input に保存 + customers.remarks 更新
       const staffInputStepIndex = selectedFlow.steps.findIndex(
         (s) => s.type === "STAFF_INPUT",
       );
@@ -3520,15 +3583,40 @@ const CustomerServiceMode = ({
             f.label === "種類",
         );
         if (petTypeField?.value && savedCustomerId) {
-          await supabase
+          const { error: remarksError } = await supabase
             .from("customers")
             .update({ remarks: petTypeField.value })
             .eq("id", savedCustomerId);
+          if (remarksError) console.error("remarks 更新エラー:", remarksError);
         }
       }
 
-      // フロー選択に戻る
+      // 4) last_enter_store_at を更新（main側の挙動を一括保存内に統合）
+      if (savedCustomerId) {
+        const { error: lastEnterError } = await supabase
+          .from("customers")
+          .update({ last_enter_store_at: new Date().toISOString() })
+          .eq("id", savedCustomerId);
+        if (lastEnterError) {
+          console.error("last_enter_store_at 更新エラー:", lastEnterError);
+        }
+      }
+
+      // フロー選択に戻る + state リセット
       setSelectedFlow(null);
+      setCurrentStepIndex(0);
+      setCustomerData({
+        name: "",
+        nameKana: "",
+        address: "",
+        phone: "",
+        email: "",
+        checkVideo: false,
+        checkTerms: false,
+      });
+      setSignatureImage(null);
+      setCustomerId(null);
+      setWatchedVideosByStep({});
     } catch (err) {
       console.error("保存エラー:", err);
       alert("保存中にエラーが発生しました: " + err.message);
