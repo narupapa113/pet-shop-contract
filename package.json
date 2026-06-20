@@ -11,12 +11,17 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.2",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.562.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.0.227",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@netlify/functions": "^5.2.0",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
