@@ -13,6 +13,31 @@ async function downloadFromStorage(path) {
   return null;
 }
 
+// iPadOS13+ はSafariがMacを偽装するため、touch判定を併用して見破る
+function isIOSDevice() {
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+// 端末によらず、Canvasが危険なサイズにならないようscaleを決める
+function resolveCanvasScale(element) {
+  // iOS/iPadOS Safari が安定して扱えるおおよその総ピクセル数の上限
+  const MAX_CANVAS_PIXELS = isIOSDevice() ? 6_000_000 : 24_000_000;
+  const baseScale = isIOSDevice() ? 1.5 : 2;
+
+  const w = element.offsetWidth || 794;
+  const h = element.offsetHeight || 1123;
+  const estimated = w * h * baseScale * baseScale;
+
+  if (estimated <= MAX_CANVAS_PIXELS) return baseScale;
+
+  // 上限を超える場合は安全なscaleまで下げる
+  const safeScale = Math.sqrt(MAX_CANVAS_PIXELS / (w * h));
+  return Math.max(1, Math.min(baseScale, safeScale));
+}
+
 const ContractPreviewStep = ({
   customerData,
   staffFields,
@@ -52,7 +77,7 @@ const ContractPreviewStep = ({
           const blobUrl = URL.createObjectURL(data);
           createdUrls.push(blobUrl);
           return [doc.id, blobUrl];
-        })
+        }),
       );
       if (!cancelled) setPdfUrls(Object.fromEntries(entries));
     };
@@ -69,12 +94,25 @@ const ContractPreviewStep = ({
     setGenerating(true);
     try {
       const element = document.getElementById("contract-preview");
+
+      // iPad/iOSのCanvasメモリ制限を避けるためscaleを動的決定
+      const scale = resolveCanvasScale(element);
+
       const canvas = await html2canvas(element, {
-        scale: 2,
+        scale,
         useCORS: true,
         backgroundColor: "#ffffff",
       });
-      const imgData = canvas.toDataURL("image/png");
+
+      // PNGはデータ量が大きくiOSで破損しやすいためJPEGを使用
+      const imgData = canvas.toDataURL("image/jpeg", 0.92);
+
+      // iOS Safariでは容量超過時にtoDataURLが空/壊れた値を返すことがある
+      if (!imgData || imgData === "data:," || imgData.length < 1000) {
+        throw new Error(
+          "Canvas画像の生成に失敗しました（端末のメモリ制限の可能性があります）",
+        );
+      }
 
       const pdf = new jsPDF("p", "mm", "a4");
       const pageWidth = 210;
@@ -83,35 +121,61 @@ const ContractPreviewStep = ({
       const imgHeightMm = (canvas.height * imgWidthMm) / canvas.width;
 
       if (imgHeightMm <= pageHeight) {
-        pdf.addImage(imgData, "PNG", 0, 0, imgWidthMm, imgHeightMm);
+        pdf.addImage(imgData, "JPEG", 0, 0, imgWidthMm, imgHeightMm);
       } else {
         const fitHeightMm = pageHeight;
         const fitWidthMm = (canvas.width * fitHeightMm) / canvas.height;
         const offsetX = (pageWidth - fitWidthMm) / 2;
-        pdf.addImage(imgData, "PNG", offsetX, 0, fitWidthMm, fitHeightMm);
+        pdf.addImage(imgData, "JPEG", offsetX, 0, fitWidthMm, fitHeightMm);
       }
 
       const contractBytes = pdf.output("arraybuffer");
       const mergedPdf = await PDFDocument.create();
       const contractDoc = await PDFDocument.load(contractBytes);
-      const contractPages = await mergedPdf.copyPages(contractDoc, contractDoc.getPageIndices());
+      const contractPages = await mergedPdf.copyPages(
+        contractDoc,
+        contractDoc.getPageIndices(),
+      );
       contractPages.forEach((p) => mergedPdf.addPage(p));
 
       // attachmentIds order
       for (const doc of attachedDocuments) {
         if (!doc.path) continue;
         const data = await downloadFromStorage(doc.path);
-        if (!data) { console.error("添付PDF取得エラー:", doc.path); continue; }
+        if (!data) {
+          console.error("添付PDF取得エラー:", doc.path);
+          continue;
+        }
         const ab = await data.arrayBuffer();
-        const attachDoc = await PDFDocument.load(ab);
-        const attachPages = await mergedPdf.copyPages(attachDoc, attachDoc.getPageIndices());
-        attachPages.forEach((p) => mergedPdf.addPage(p));
+        try {
+          const attachDoc = await PDFDocument.load(ab);
+          const attachPages = await mergedPdf.copyPages(
+            attachDoc,
+            attachDoc.getPageIndices(),
+          );
+          attachPages.forEach((p) => mergedPdf.addPage(p));
+        } catch (e) {
+          // 1つの添付が壊れていても全体を止めないようにスキップ
+          console.error("添付PDFの読み込みに失敗（スキップ）:", doc.path, e);
+        }
       }
 
       const mergedBytes = await mergedPdf.save();
       const blob = new Blob([mergedBytes], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
+
+      // window.open はiPad Safariでブロックされやすいため、aタグでダウンロード保存する
+      const safeName = (customerData?.name || "顧客").replace(
+        /[\\/:*?"<>|]/g,
+        "",
+      );
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `契約書_${safeName}_${currentDate}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (err) {
       console.error("PDF生成エラー:", err);
@@ -126,7 +190,10 @@ const ContractPreviewStep = ({
       <div className="w-full max-w-4xl mb-6 flex justify-between items-center print:hidden">
         <h2 className="text-xl font-bold text-gray-800">契約内容の確認</h2>
         <div className="flex space-x-4">
-          <button onClick={onPrev} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-white bg-white">
+          <button
+            onClick={onPrev}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-white bg-white"
+          >
             修正する
           </button>
           {!isRemote && (
@@ -140,7 +207,10 @@ const ContractPreviewStep = ({
             </button>
           )}
           {onFinish && (
-            <button onClick={onFinish} className="px-6 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 shadow-md">
+            <button
+              onClick={onFinish}
+              className="px-6 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 shadow-md"
+            >
               {isRemote ? "送信する" : "接客終了"}
             </button>
           )}
@@ -170,9 +240,18 @@ const ContractPreviewStep = ({
             <tbody>
               {staffFields.map((field) => (
                 <tr key={field.id}>
-                  <th className="border border-gray-400 p-2 bg-gray-50 w-1/3 text-left font-bold print:bg-gray-50">{field.label}</th>
+                  <th className="border border-gray-400 p-2 bg-gray-50 w-1/3 text-left font-bold print:bg-gray-50">
+                    {field.label}
+                  </th>
                   <td className="border border-gray-400 p-2">
-                    {field.value || (isRemote ? <span className="text-gray-400 italic">（店舗にて記入）</span> : "ー")}
+                    {field.value ||
+                      (isRemote ? (
+                        <span className="text-gray-400 italic">
+                          （店舗にて記入）
+                        </span>
+                      ) : (
+                        "ー"
+                      ))}
                   </td>
                 </tr>
               ))}
@@ -186,16 +265,28 @@ const ContractPreviewStep = ({
           <table className="w-full border-collapse border border-gray-400">
             <tbody>
               <tr>
-                <th className="border border-gray-400 p-2 bg-gray-50 w-1/3 text-left font-bold print:bg-gray-50">氏名</th>
-                <td className="border border-gray-400 p-2">{customerData.name}</td>
+                <th className="border border-gray-400 p-2 bg-gray-50 w-1/3 text-left font-bold print:bg-gray-50">
+                  氏名
+                </th>
+                <td className="border border-gray-400 p-2">
+                  {customerData.name}
+                </td>
               </tr>
               <tr>
-                <th className="border border-gray-400 p-2 bg-gray-50 text-left font-bold print:bg-gray-50">住所</th>
-                <td className="border border-gray-400 p-2">{customerData.address}</td>
+                <th className="border border-gray-400 p-2 bg-gray-50 text-left font-bold print:bg-gray-50">
+                  住所
+                </th>
+                <td className="border border-gray-400 p-2">
+                  {customerData.address}
+                </td>
               </tr>
               <tr>
-                <th className="border border-gray-400 p-2 bg-gray-50 text-left font-bold print:bg-gray-50">電話番号</th>
-                <td className="border border-gray-400 p-2">{customerData.phone}</td>
+                <th className="border border-gray-400 p-2 bg-gray-50 text-left font-bold print:bg-gray-50">
+                  電話番号
+                </th>
+                <td className="border border-gray-400 p-2">
+                  {customerData.phone}
+                </td>
               </tr>
             </tbody>
           </table>
@@ -205,15 +296,24 @@ const ContractPreviewStep = ({
             <p className="mb-2 font-bold">署名（乙）:</p>
             <div className="border-b border-gray-800 h-20 flex items-end justify-center relative">
               {signatureImage && (
-                <img src={signatureImage} alt="Signature" className="max-h-16 object-contain absolute bottom-1" crossOrigin="anonymous" />
+                <img
+                  src={signatureImage}
+                  alt="Signature"
+                  className="max-h-16 object-contain absolute bottom-1"
+                  crossOrigin="anonymous"
+                />
               )}
-              <span className="text-xs text-gray-400 absolute bottom-0 right-0">電子署名</span>
+              <span className="text-xs text-gray-400 absolute bottom-0 right-0">
+                電子署名
+              </span>
             </div>
             <p className="text-right mt-1 text-sm">{currentDate}</p>
           </div>
         </div>
         <div className="mt-16 text-center text-sm text-gray-500 border-t pt-4">
-          <p className="font-bold">{companyInfo?.name || "株式会社ペットショップ見本"}</p>
+          <p className="font-bold">
+            {companyInfo?.name || "株式会社ペットショップ見本"}
+          </p>
           <p>{companyInfo?.address || "東京都渋谷区XX-XX"}</p>
           <p>TEL: {companyInfo?.phone || "03-XXXX-XXXX"}</p>
         </div>
@@ -233,13 +333,21 @@ const ContractPreviewStep = ({
                 className="bg-white shadow-2xl w-[210mm] min-h-[297mm] mx-auto mb-8 overflow-hidden"
               >
                 {url ? (
-                  <iframe src={`${url}#zoom=page-width`} title={doc.title} className="w-full h-[297mm] border-0" />
+                  <iframe
+                    src={`${url}#zoom=page-width`}
+                    title={doc.title}
+                    className="w-full h-[297mm] border-0"
+                  />
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full min-h-[297mm] border-2 border-dashed border-gray-200 p-10">
                     <FileText size={64} className="text-gray-300 mb-4" />
-                    <h2 className="text-2xl font-bold text-gray-700 mb-2">{doc.title}</h2>
+                    <h2 className="text-2xl font-bold text-gray-700 mb-2">
+                      {doc.title}
+                    </h2>
                     <p className="text-gray-500">{doc.filename}</p>
-                    <p className="text-sm text-gray-400 mt-4">PDFを読み込み中...</p>
+                    <p className="text-sm text-gray-400 mt-4">
+                      PDFを読み込み中...
+                    </p>
                   </div>
                 )}
               </div>
