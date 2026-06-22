@@ -32,7 +32,28 @@ import { supabase, supabaseAdmin } from "../lib/supabase";
 import { STEP_TYPES, DEFAULT_TEMPLATES } from "../constants";
 import ContractPreviewStep from "../components/ContractPreviewStep";
 import SignatureStep from "../components/SignatureStep";
+import UserManagement from "../components/UserManagement";
 import PdfCardThumbnail from "../components/PdfCardThumbnail";
+import * as pdfjsLib from "pdfjs-dist";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url
+).toString();
+
+async function generatePdfThumbnailBlob(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale: 1 });
+  const scale = 400 / viewport.width;
+  const scaledViewport = page.getViewport({ scale });
+  const canvas = document.createElement("canvas");
+  canvas.width = scaledViewport.width;
+  canvas.height = scaledViewport.height;
+  await page.render({ canvasContext: canvas.getContext("2d"), viewport: scaledViewport }).promise;
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+}
 
 const AdminDashboard = ({
   onLogout,
@@ -192,13 +213,19 @@ const AdminDashboard = ({
   const fetchDocuments = useCallback(async () => {
     const { data } = await supabase.from("files").select("*").order("create_at", { ascending: false });
     if (data) {
-      setDocumentsList(data.map((f) => ({
-        id: f.id,
-        title: f.name,
-        filename: f.path ? f.path.split("/").pop() : "",
-        path: f.path,
-        type: "PDF",
-      })));
+      setDocumentsList(data.map((f) => {
+        const thumbPath = f.path
+          ? `thumbnails/${f.path.replace(/\.[^.]+$/, "")}.jpg`
+          : null;
+        return {
+          id: f.id,
+          title: f.name,
+          filename: f.path ? f.path.split("/").pop() : "",
+          path: f.path,
+          thumbnailPath: thumbPath,
+          type: "PDF",
+        };
+      }));
     }
   }, [setDocumentsList]);
 
@@ -404,6 +431,14 @@ const AdminDashboard = ({
           clearInterval(fakeProgress);
           setUploadProgressPct(100);
           if (uploadError) throw uploadError;
+          setUploadProgress("サムネイルを生成中...");
+          const thumbPath = `thumbnails/${filePath.replace(/\.[^.]+$/, "")}.jpg`;
+          try {
+            const thumbBlob = await generatePdfThumbnailBlob(selectedFile);
+            if (thumbBlob) {
+              await supabaseAdmin.storage.from("files").upload(thumbPath, thumbBlob, { contentType: "image/jpeg", upsert: true });
+            }
+          } catch { /* サムネイル生成失敗は無視 */ }
           setUploadProgress("情報を保存中...");
           const { error: dbError } = await supabaseAdmin.from("files").insert({
             id: crypto.randomUUID(),
@@ -1392,7 +1427,7 @@ const deleteCustomer = async (id) => {
                         }
                       }}
                     >
-                      <PdfCardThumbnail path={doc.path} />
+                      <PdfCardThumbnail path={doc.path} thumbnailPath={doc.thumbnailPath} />
                     </div>
                     <div className="p-4">
                       <div className="flex items-center mb-1">
@@ -1901,6 +1936,7 @@ const deleteCustomer = async (id) => {
                     </div>
                   </div>
                 )}
+                {settingsTab === "users" && <UserManagement />}
               </div>
             </div>
           </div>
