@@ -8,45 +8,53 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString();
 
-const PdfCardThumbnail = ({ path }) => {
+async function renderPdfToDataUrl(arrayBuffer) {
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale: 1 });
+  const scale = 400 / viewport.width;
+  const scaledViewport = page.getViewport({ scale });
+  const canvas = document.createElement("canvas");
+  canvas.width = scaledViewport.width;
+  canvas.height = scaledViewport.height;
+  await page.render({ canvasContext: canvas.getContext("2d"), viewport: scaledViewport }).promise;
+  return canvas.toDataURL("image/jpeg", 0.85);
+}
+
+const PdfCardThumbnail = ({ path, thumbnailPath }) => {
   const [dataUrl, setDataUrl] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!path) { setLoading(false); return; }
+    if (!path && !thumbnailPath) { setLoading(false); return; }
     let cancelled = false;
 
-    const render = async () => {
+    const load = async () => {
       try {
-        const { data, error } = await supabaseAdmin.storage.from("files").download(path);
-        if (cancelled || error || !data) { if (!cancelled) setLoading(false); return; }
-
-        const arrayBuffer = await data.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        const page = await pdf.getPage(1);
-
-        const viewport = page.getViewport({ scale: 1 });
-        const scale = 400 / viewport.width;
-        const scaledViewport = page.getViewport({ scale });
-
-        const canvas = document.createElement("canvas");
-        canvas.width = scaledViewport.width;
-        canvas.height = scaledViewport.height;
-
-        await page.render({ canvasContext: canvas.getContext("2d"), viewport: scaledViewport }).promise;
-
-        if (!cancelled) {
-          setDataUrl(canvas.toDataURL("image/jpeg", 0.85));
-          setLoading(false);
+        if (thumbnailPath) {
+          const { data, error } = await supabaseAdmin.storage.from("files").download(thumbnailPath);
+          if (!cancelled && !error && data) {
+            const url = URL.createObjectURL(data);
+            setDataUrl(url);
+            setLoading(false);
+            return;
+          }
         }
-      } catch {
-        if (!cancelled) setLoading(false);
-      }
+        if (path) {
+          const { data, error } = await supabaseAdmin.storage.from("files").download(path);
+          if (!cancelled && !error && data) {
+            const ab = await data.arrayBuffer();
+            const url = await renderPdfToDataUrl(ab);
+            if (!cancelled) setDataUrl(url);
+          }
+        }
+      } catch { /* ignore */ }
+      if (!cancelled) setLoading(false);
     };
 
-    render();
+    load();
     return () => { cancelled = true; };
-  }, [path]);
+  }, [path, thumbnailPath]);
 
   if (loading) {
     return (

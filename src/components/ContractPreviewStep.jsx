@@ -77,7 +77,7 @@ const ContractPreviewStep = ({
           const blobUrl = URL.createObjectURL(data);
           createdUrls.push(blobUrl);
           return [doc.id, blobUrl];
-        }),
+        })
       );
       if (!cancelled) setPdfUrls(Object.fromEntries(entries));
     };
@@ -110,7 +110,7 @@ const ContractPreviewStep = ({
       // iOS Safariでは容量超過時にtoDataURLが空/壊れた値を返すことがある
       if (!imgData || imgData === "data:," || imgData.length < 1000) {
         throw new Error(
-          "Canvas画像の生成に失敗しました（端末のメモリ制限の可能性があります）",
+          "Canvas画像の生成に失敗しました（端末のメモリ制限の可能性があります）"
         );
       }
 
@@ -134,7 +134,7 @@ const ContractPreviewStep = ({
       const contractDoc = await PDFDocument.load(contractBytes);
       const contractPages = await mergedPdf.copyPages(
         contractDoc,
-        contractDoc.getPageIndices(),
+        contractDoc.getPageIndices()
       );
       contractPages.forEach((p) => mergedPdf.addPage(p));
 
@@ -151,7 +151,7 @@ const ContractPreviewStep = ({
           const attachDoc = await PDFDocument.load(ab);
           const attachPages = await mergedPdf.copyPages(
             attachDoc,
-            attachDoc.getPageIndices(),
+            attachDoc.getPageIndices()
           );
           attachPages.forEach((p) => mergedPdf.addPage(p));
         } catch (e) {
@@ -165,10 +165,7 @@ const ContractPreviewStep = ({
       const url = URL.createObjectURL(blob);
 
       // window.open はiPad Safariでブロックされやすいため、aタグでダウンロード保存する
-      const safeName = (customerData?.name || "顧客").replace(
-        /[\\/:*?"<>|]/g,
-        "",
-      );
+      const safeName = (customerData?.name || "顧客").replace(/[\\/:*?"<>|]/g, "");
       const a = document.createElement("a");
       a.href = url;
       a.download = `契約書_${safeName}_${currentDate}.pdf`;

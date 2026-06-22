@@ -85,9 +85,15 @@ const CustomerServiceMode = ({
   };
 
   const handleFlowSelect = (flow) => {
-    setSelectedFlow(flow);
+    setCurrentStepIndex(0);
+    setCustomerData({ name: "", nameKana: "", address: "", phone: "", email: "", checkVideo: false, checkTerms: false });
+    setSignatureImage(null);
+    setStaffRemarks(["", "", ""]);
+    setWatchedVideosByStep({});
+    setCompletionToken(null);
     const template = staffTemplates.find((t) => t.id === flow.templateId);
     setStaffFields(template ? JSON.parse(JSON.stringify(template.fields)) : []);
+    setSelectedFlow(flow);
   };
 
   if (!selectedFlow) {
@@ -206,23 +212,43 @@ const CustomerServiceMode = ({
 
   const handlePrint = () => window.print();
 
-  // 「接客終了」時に一括INSERT
+  // 「接客終了」時に一括INSERT（電話番号一致で既存顧客UPDATE）
   const handleFinish = async () => {
     try {
-      // 1. customers INSERT
-      const { data: custData } = await supabase
-        .from("customers")
-        .insert({
-          name: customerData.name,
-          name_kana: customerData.nameKana || null,
-          tell: customerData.phone || null,
-          mail: customerData.email || null,
-          address: customerData.address || null,
-          last_enter_store_at: new Date().toISOString(),
-        })
-        .select("id")
-        .maybeSingle();
-      const newCustomerId = custData?.id ?? null;
+      // 1. 電話番号で既存顧客を検索し、あれば UPDATE / なければ INSERT
+      let newCustomerId = null;
+      const phone = customerData.phone?.trim() || null;
+      const now = new Date().toISOString();
+      const customerBase = {
+        name: customerData.name,
+        name_kana: customerData.nameKana || null,
+        tell: phone,
+        mail: customerData.email || null,
+        address: customerData.address || null,
+        last_enter_store_at: now,
+      };
+
+      if (phone) {
+        const { data: existing } = await supabase
+          .from("customers")
+          .select("id")
+          .eq("tell", phone)
+          .neq("is_delete", true)
+          .maybeSingle();
+        if (existing?.id) {
+          await supabase.from("customers").update({ ...customerBase, update_at: now }).eq("id", existing.id);
+          newCustomerId = existing.id;
+        }
+      }
+
+      if (!newCustomerId) {
+        const { data: custData } = await supabase
+          .from("customers")
+          .insert({ ...customerBase, create_at: now })
+          .select("id")
+          .maybeSingle();
+        newCustomerId = custData?.id ?? null;
+      }
 
       // 2. 署名画像を Storage にアップロード → sign_history INSERT
       let newSignHistoryId = null;
