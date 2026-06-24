@@ -45,10 +45,19 @@ const CustomerServiceMode = ({
     return res.json();
   };
 
-  const recordWatchProgress = async (videoId, watchedSec, requiredSec, flowId) => {
+  const recordWatchProgress = async (
+    videoId,
+    watchedSec,
+    requiredSec,
+    flowId,
+  ) => {
     try {
       await callEdgeFn("record-watch-progress", {
-        sessionKey, flowId: flowId ?? "", videoId, watchedSec, requiredSec,
+        sessionKey,
+        flowId: flowId ?? "",
+        videoId,
+        watchedSec,
+        requiredSec,
       });
     } catch {
       await supabaseAdmin.from("video_watch_sessions").upsert(
@@ -69,16 +78,24 @@ const CustomerServiceMode = ({
   const requestCompletionToken = async (flowId, requiredVideoIds) => {
     try {
       const data = await callEdgeFn("issue-completion-token", {
-        sessionKey, flowId: flowId ?? "", requiredVideoIds,
+        sessionKey,
+        flowId: flowId ?? "",
+        requiredVideoIds,
       });
       setCompletionToken(data.token);
       return data.token;
     } catch {
       const token = crypto.randomUUID() + "-" + crypto.randomUUID();
       const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-      await supabaseAdmin.from("completion_tokens").insert({
-        token, session_key: sessionKey, flow_id: flowId ?? "", expires_at: expiresAt,
-      }).catch(() => {});
+      await supabaseAdmin
+        .from("completion_tokens")
+        .insert({
+          token,
+          session_key: sessionKey,
+          flow_id: flowId ?? "",
+          expires_at: expiresAt,
+        })
+        .catch(() => {});
       setCompletionToken(token);
       return token;
     }
@@ -86,7 +103,15 @@ const CustomerServiceMode = ({
 
   const handleFlowSelect = (flow) => {
     setCurrentStepIndex(0);
-    setCustomerData({ name: "", nameKana: "", address: "", phone: "", email: "", checkVideo: false, checkTerms: false });
+    setCustomerData({
+      name: "",
+      nameKana: "",
+      address: "",
+      phone: "",
+      email: "",
+      checkVideo: false,
+      checkTerms: false,
+    });
     setSignatureImage(null);
     setStaffRemarks(["", "", ""]);
     setWatchedVideosByStep({});
@@ -101,7 +126,9 @@ const CustomerServiceMode = ({
       <div className="min-h-screen bg-gray-100 p-8 flex flex-col items-center justify-center">
         <div className="w-full max-w-4xl">
           <div className="flex justify-between items-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-800">接客メニュー選択</h1>
+            <h1 className="text-2xl font-bold text-gray-800">
+              接客メニュー選択
+            </h1>
             <button
               onClick={onLogout}
               className="text-sm border border-gray-400 px-4 py-2 rounded-lg hover:bg-gray-200 text-gray-600"
@@ -117,13 +144,20 @@ const CustomerServiceMode = ({
                 className="bg-white p-8 rounded-2xl shadow-md border-2 border-transparent hover:border-blue-500 hover:shadow-xl transition-all text-left group"
               >
                 <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mb-4 group-hover:bg-blue-600 transition-colors">
-                  <List size={28} className="text-blue-600 group-hover:text-white" />
+                  <List
+                    size={28}
+                    className="text-blue-600 group-hover:text-white"
+                  />
                 </div>
-                <h2 className="text-xl font-bold text-gray-800 mb-2">{flow.name}</h2>
+                <h2 className="text-xl font-bold text-gray-800 mb-2">
+                  {flow.name}
+                </h2>
                 <p className="text-gray-500 text-sm mb-4">{flow.description}</p>
                 <div className="text-xs text-gray-400 flex flex-wrap gap-2">
                   {flow.steps.map((step, i) => (
-                    <span key={i} className="bg-gray-100 px-2 py-1 rounded">{step.title}</span>
+                    <span key={i} className="bg-gray-100 px-2 py-1 rounded">
+                      {step.title}
+                    </span>
                   ))}
                 </div>
               </button>
@@ -165,7 +199,9 @@ const CustomerServiceMode = ({
       }
       setCurrentStepIndex(prevIndex);
     } else {
-      if (window.confirm("メニュー選択に戻りますか？入力内容は破棄されます。")) {
+      if (
+        window.confirm("メニュー選択に戻りますか？入力内容は破棄されます。")
+      ) {
         setSelectedFlow(null);
         setCustomerData({
           name: "",
@@ -185,29 +221,52 @@ const CustomerServiceMode = ({
     const { name, value, type, checked } = e.target;
     const newValue = type === "checkbox" ? checked : value;
     setCustomerData((prev) => ({ ...prev, [name]: newValue }));
-    if (name === "checkVideo" && newValue === true && currentStep?.type === "VIDEO") {
+    if (
+      name === "checkVideo" &&
+      newValue === true &&
+      currentStep?.type === "VIDEO"
+    ) {
       const targetIds = currentStep.videoIds || [];
       const playlist =
         targetIds.length > 0
           ? videoPlaylist.filter((v) => targetIds.includes(v.id))
           : videoPlaylist;
-      requestCompletionToken(selectedFlow.id, playlist.map((v) => v.id));
+      requestCompletionToken(
+        selectedFlow.id,
+        playlist.map((v) => v.id),
+      );
     }
   };
 
   const handleStaffFieldChange = (id, value) => {
-    setStaffFields((prev) => prev.map((field) => (field.id === id ? { ...field, value } : field)));
+    setStaffFields((prev) =>
+      prev.map((field) => (field.id === id ? { ...field, value } : field)),
+    );
   };
 
   const addStaffField = () => {
     const newId = `custom_${Date.now()}`;
-    setStaffFields([...staffFields, { id: newId, label: "新しい項目", value: "", type: "text", isCustom: true }]);
+    setStaffFields([
+      ...staffFields,
+      {
+        id: newId,
+        label: "新しい項目",
+        value: "",
+        type: "text",
+        isCustom: true,
+      },
+    ]);
   };
 
-  const removeStaffField = (id) => setStaffFields((prev) => prev.filter((f) => f.id !== id));
+  const removeStaffField = (id) =>
+    setStaffFields((prev) => prev.filter((f) => f.id !== id));
 
   const updateFieldLabel = (id, newLabel) => {
-    setStaffFields((prev) => prev.map((field) => (field.id === id ? { ...field, label: newLabel } : field)));
+    setStaffFields((prev) =>
+      prev.map((field) =>
+        field.id === id ? { ...field, label: newLabel } : field,
+      ),
+    );
   };
 
   const handlePrint = () => window.print();
@@ -229,14 +288,26 @@ const CustomerServiceMode = ({
       };
 
       if (phone) {
-        const { data: existing } = await supabase
+        // maybeSingle は2件以上ヒットするとエラーになり既存ありでも検出できないため、
+        // limit(1) で先頭1件（最も古いレコード）を取得する方式にする
+        const { data: existingList, error: searchError } = await supabase
           .from("customers")
           .select("id")
           .eq("tell", phone)
           .neq("is_delete", true)
-          .maybeSingle();
+          .order("create_at", { ascending: true })
+          .limit(1);
+
+        if (searchError) {
+          console.error("既存顧客の検索エラー:", searchError);
+        }
+
+        const existing = existingList?.[0];
         if (existing?.id) {
-          await supabase.from("customers").update({ ...customerBase, update_at: now }).eq("id", existing.id);
+          await supabase
+            .from("customers")
+            .update({ ...customerBase, update_at: now })
+            .eq("id", existing.id);
           newCustomerId = existing.id;
         }
       }
@@ -253,7 +324,9 @@ const CustomerServiceMode = ({
       // 2. 署名画像を Storage にアップロード → sign_history INSERT
       let newSignHistoryId = null;
       if (signatureImage) {
-        const allWatchedVideoIds = [...new Set(Object.values(watchedVideosByStep).flat())];
+        const allWatchedVideoIds = [
+          ...new Set(Object.values(watchedVideosByStep).flat()),
+        ];
         let saved = false;
         if (completionToken) {
           try {
@@ -266,7 +339,9 @@ const CustomerServiceMode = ({
               videoIds: allWatchedVideoIds,
             });
             saved = true;
-          } catch { /* fall through */ }
+          } catch {
+            /* fall through */
+          }
         }
         if (!saved) {
           const blob = await (await fetch(signatureImage)).blob();
@@ -275,8 +350,11 @@ const CustomerServiceMode = ({
             .from("signatures")
             .upload(filePath, blob, { contentType: "image/png" });
           if (!uploadError) {
-            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-            const contractIdValue = uuidRegex.test(selectedFlow.id) ? selectedFlow.id : null;
+            const uuidRegex =
+              /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const contractIdValue = uuidRegex.test(selectedFlow.id)
+              ? selectedFlow.id
+              : null;
             if (contractIdValue) {
               const { data: signHistoryData } = await supabaseAdmin
                 .from("sign_history")
@@ -310,11 +388,14 @@ const CustomerServiceMode = ({
 
       // 4. customers.remarks に備考を保存
       if (newCustomerId) {
-        await supabase.from("customers").update({
-          remarks: staffRemarks[0] || null,
-          remarks2: staffRemarks[1] || null,
-          remarks3: staffRemarks[2] || null,
-        }).eq("id", newCustomerId);
+        await supabase
+          .from("customers")
+          .update({
+            remarks: staffRemarks[0] || null,
+            remarks2: staffRemarks[1] || null,
+            remarks3: staffRemarks[2] || null,
+          })
+          .eq("id", newCustomerId);
       }
     } catch (err) {
       console.error("接客終了処理エラー:", err);
@@ -322,7 +403,9 @@ const CustomerServiceMode = ({
     setSelectedFlow(null);
   };
 
-  const templateName = staffTemplates.find((t) => t.id === selectedFlow.templateId)?.name;
+  const templateName = staffTemplates.find(
+    (t) => t.id === selectedFlow.templateId,
+  )?.name;
 
   const renderStepContent = () => {
     switch (currentStep.type) {
@@ -339,15 +422,23 @@ const CustomerServiceMode = ({
             onVideoComplete={(updater) => {
               setWatchedVideosByStep((prev) => {
                 const current = prev[currentStepIndex] || [];
-                const next = typeof updater === "function" ? updater(current) : updater;
+                const next =
+                  typeof updater === "function" ? updater(current) : updater;
                 if (typeof updater === "function") {
                   const added = next.filter((id) => !current.includes(id));
                   added.forEach((videoId) => {
                     const vid = videoPlaylist.find((v) => v.id === videoId);
                     const requiredSec = vid?.duration
-                      ? vid.duration.split(":").reduce((a, b) => a * 60 + Number(b), 0)
+                      ? vid.duration
+                          .split(":")
+                          .reduce((a, b) => a * 60 + Number(b), 0)
                       : 0;
-                    recordWatchProgress(videoId, requiredSec, requiredSec, selectedFlow.id);
+                    recordWatchProgress(
+                      videoId,
+                      requiredSec,
+                      requiredSec,
+                      selectedFlow.id,
+                    );
                   });
                 }
                 return { ...prev, [currentStepIndex]: next };
@@ -374,7 +465,9 @@ const CustomerServiceMode = ({
           />
         );
       case "STAFF_INPUT": {
-        const tplName = staffTemplates.find((t) => t.id === selectedFlow.templateId)?.name || null;
+        const tplName =
+          staffTemplates.find((t) => t.id === selectedFlow.templateId)?.name ||
+          null;
         return (
           <StaffInputStep
             fields={staffFields}
@@ -386,7 +479,11 @@ const CustomerServiceMode = ({
             onNext={nextStep}
             onPrev={prevStep}
             remarksArr={staffRemarks}
-            onRemarksChange={(index, value) => setStaffRemarks((prev) => prev.map((r, i) => i === index ? value : r))}
+            onRemarksChange={(index, value) =>
+              setStaffRemarks((prev) =>
+                prev.map((r, i) => (i === index ? value : r)),
+              )
+            }
           />
         );
       }
@@ -414,12 +511,20 @@ const CustomerServiceMode = ({
     <div className="min-h-screen bg-gray-100 pb-10 print:bg-white print:pb-0 relative">
       <style>{`@media print { @page { margin: 15mm; size: A4; } body { -webkit-print-color-adjust: exact; } .print\\:break-before-page { break-before: page; } }`}</style>
       <div className="bg-gray-800 text-white px-4 py-2 flex justify-between items-center print:hidden">
-        <span className="text-sm font-medium opacity-70">接客中: {selectedFlow.name}</span>
-        <button onClick={onLogout} className="text-xs border border-gray-600 px-3 py-1 rounded hover:bg-gray-700">
+        <span className="text-sm font-medium opacity-70">
+          接客中: {selectedFlow.name}
+        </span>
+        <button
+          onClick={onLogout}
+          className="text-xs border border-gray-600 px-3 py-1 rounded hover:bg-gray-700"
+        >
           接客を終了してログアウト
         </button>
       </div>
-      <ProgressBar steps={selectedFlow.steps} currentStepIndex={currentStepIndex} />
+      <ProgressBar
+        steps={selectedFlow.steps}
+        currentStepIndex={currentStepIndex}
+      />
       <div className="container mx-auto px-4 print:p-0 print:w-full print:max-w-none">
         {renderStepContent()}
       </div>
