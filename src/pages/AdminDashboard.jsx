@@ -911,6 +911,52 @@ const deleteCustomer = async (id) => {
     if (activeTab === "remote") { fetchIssuedUrls(); fetchCustomers(); }
   }, [activeTab, fetchCustomers, fetchIssuedUrls]);
 
+  // --- 契約履歴 ---
+  const [signHistoryList, setSignHistoryList] = useState([]);
+  const [signHistoryLoading, setSignHistoryLoading] = useState(false);
+  const [signHistoryDetail, setSignHistoryDetail] = useState(null);
+  const [signHistorySearch, setSignHistorySearch] = useState("");
+
+  const fetchSignHistory = useCallback(async () => {
+    setSignHistoryLoading(true);
+    const { data } = await supabaseAdmin
+      .from("sign_history")
+      .select("*, customers(name, name_kana), users(name)")
+      .order("create_at", { ascending: false });
+    setSignHistoryList(data || []);
+    setSignHistoryLoading(false);
+  }, []);
+
+  const openSignHistoryDetail = useCallback(async (history) => {
+    const { data: inputs } = await supabaseAdmin
+      .from("sign_input")
+      .select("sign_item_no, sign_item_value")
+      .eq("id", history.id)
+      .order("sign_item_no", { ascending: true });
+
+    // contract_id = flow_header.id → contract_template_id → template items
+    let templateItems = [];
+    const { data: flowRow } = await supabaseAdmin
+      .from("flow_header")
+      .select("contract_template_id")
+      .eq("id", history.contract_id)
+      .maybeSingle();
+    if (flowRow?.contract_template_id) {
+      const { data: items } = await supabaseAdmin
+        .from("contract_templates_item")
+        .select("item_no, item_name")
+        .eq("id", flowRow.contract_template_id)
+        .order("item_no", { ascending: true });
+      templateItems = items || [];
+    }
+
+    setSignHistoryDetail({ history, inputs: inputs || [], templateItems });
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "history") fetchSignHistory();
+  }, [activeTab, fetchSignHistory]);
+
   // --- 設定 ---
   const [settingsTab, setSettingsTab] = useState("company");
   const [tempCompanyInfo, setTempCompanyInfo] = useState(companyInfo);
@@ -1573,37 +1619,37 @@ const deleteCustomer = async (id) => {
                 <Plus size={18} className="mr-2" /> 新規フロー作成
               </button>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {flows.map((flow) => (
-                <div key={flow.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                  <div className="flex justify-between items-start mb-4">
-                    <h3 className="text-lg font-bold text-gray-800">{flow.name}</h3>
-                    <div className="flex space-x-2">
-                      <button onClick={() => openFlowModal(flow)} className="text-gray-400 hover:text-blue-600"><Edit2 size={18} /></button>
-                      <button onClick={() => deleteFlow(flow.id)} className="text-gray-400 hover:text-red-600"><Trash2 size={18} /></button>
-                    </div>
-                  </div>
-                  <p className="text-sm text-gray-500 mb-4 h-10">{flow.description}</p>
-                  <div className="mb-2 text-xs bg-gray-100 p-2 rounded flex flex-col gap-1">
-                    <div>
-                      <span className="font-bold text-gray-500 mr-2">テンプレート:</span>
-                      {staffTemplates.find((t) => t.id === flow.templateId)?.name || "未設定"}
-                    </div>
-                    <div>
-                      <span className="font-bold text-gray-500 mr-2">添付資料:</span>
-                      {flow.attachmentIds?.length || 0} 件
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    {flow.steps.map((step, idx) => (
-                      <div key={idx} className="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded">
-                        <div className="w-5 h-5 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold mr-2">{idx + 1}</div>
-                        {step.title}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-5 py-3 font-semibold text-gray-600 border-b border-gray-200">フロー名</th>
+                    <th className="px-5 py-3 font-semibold text-gray-600 border-b border-gray-200">契約書テンプレート</th>
+                    <th className="px-5 py-3 font-semibold text-gray-600 border-b border-gray-200 text-center">ステップ数</th>
+                    <th className="px-5 py-3 font-semibold text-gray-600 border-b border-gray-200 text-center">添付資料</th>
+                    <th className="px-5 py-3 font-semibold text-gray-600 border-b border-gray-200 text-right">操作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {flows.length === 0 && (
+                    <tr><td colSpan={5} className="px-5 py-16 text-center text-gray-400">フローがありません</td></tr>
+                  )}
+                  {flows.map((flow) => (
+                    <tr key={flow.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-5 py-3 font-medium text-gray-800">{flow.name}</td>
+                      <td className="px-5 py-3 text-gray-500">{staffTemplates.find((t) => t.id === flow.templateId)?.name || "未設定"}</td>
+                      <td className="px-5 py-3 text-center text-gray-600">{flow.steps.length}</td>
+                      <td className="px-5 py-3 text-center text-gray-600">{flow.attachmentIds?.length || 0}</td>
+                      <td className="px-5 py-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button onClick={() => openFlowModal(flow)} className="text-gray-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
+                          <button onClick={() => deleteFlow(flow.id)} className="text-gray-400 hover:text-red-600 transition-colors"><Trash2 size={16} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
             {/* フローモーダル */}
@@ -1766,45 +1812,73 @@ const deleteCustomer = async (id) => {
 
         {/* 契約履歴 */}
         {activeTab === "history" && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-[500px]">
-            <h3 className="text-lg font-bold text-gray-800 mb-4">契約履歴一覧</h3>
-            <div className="border rounded-lg overflow-hidden">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-gray-50 text-gray-700 font-medium">
-                  <tr>
-                    <th className="px-6 py-3">契約ID</th>
-                    <th className="px-6 py-3">契約日</th>
-                    <th className="px-6 py-3">お客様名</th>
-                    <th className="px-6 py-3">ペット種類</th>
-                    <th className="px-6 py-3">金額</th>
-                    <th className="px-6 py-3">担当者</th>
-                    <th className="px-6 py-3">ステータス</th>
-                    <th className="px-6 py-3 text-right">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {[
-                    { id: "C001", date: "2024/05/20", customer: "山田 太郎", type: "トイプードル", price: "¥480,000", staff: "佐藤 花子", status: "完了" },
-                    { id: "C002", date: "2024/05/19", customer: "鈴木 一郎", type: "チワワ", price: "¥350,000", staff: "田中 次郎", status: "完了" },
-                  ].map((contract) => (
-                    <tr key={contract.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-3 font-medium">{contract.id}</td>
-                      <td className="px-6 py-3 text-gray-500">{contract.date}</td>
-                      <td className="px-6 py-3">{contract.customer}</td>
-                      <td className="px-6 py-3">{contract.type}</td>
-                      <td className="px-6 py-3">{contract.price}</td>
-                      <td className="px-6 py-3 text-gray-500">{contract.staff}</td>
-                      <td className="px-6 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs ${contract.status === "完了" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>{contract.status}</span>
-                      </td>
-                      <td className="px-6 py-3 text-right">
-                        <button className="text-blue-600 hover:text-blue-800 text-xs font-medium">詳細</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 min-h-[500px]">
+            <div className="p-6 border-b border-gray-100 flex flex-wrap justify-between items-center gap-3">
+              <h3 className="text-lg font-bold text-gray-800">契約履歴一覧</h3>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={signHistorySearch}
+                  onChange={(e) => setSignHistorySearch(e.target.value)}
+                  placeholder="お客様名・契約名で検索"
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 w-56"
+                />
+                <button onClick={fetchSignHistory} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-medium transition-colors">更新</button>
+              </div>
             </div>
+            {signHistoryLoading ? (
+              <div className="flex items-center justify-center py-20 text-gray-400 text-sm">読み込み中...</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-gray-50 text-gray-600 font-medium">
+                    <tr>
+                      <th className="px-5 py-3 border-b border-gray-200">契約名</th>
+                      <th className="px-5 py-3 border-b border-gray-200">お客様名</th>
+                      <th className="px-5 py-3 border-b border-gray-200">担当スタッフ</th>
+                      <th className="px-5 py-3 border-b border-gray-200">契約日時</th>
+                      <th className="px-5 py-3 border-b border-gray-200 text-right">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {signHistoryList
+                      .filter((h) => {
+                        if (!signHistorySearch) return true;
+                        const q = signHistorySearch.toLowerCase();
+                        return (
+                          (h.contract_name || "").toLowerCase().includes(q) ||
+                          (h.customers?.name || "").toLowerCase().includes(q) ||
+                          (h.customers?.name_kana || "").toLowerCase().includes(q)
+                        );
+                      })
+                      .map((h) => (
+                        <tr key={h.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-5 py-3 font-medium text-gray-800">{h.contract_name || "—"}</td>
+                          <td className="px-5 py-3 text-gray-700">
+                            {h.customers?.name || "—"}
+                            {h.customers?.name_kana && <span className="text-xs text-gray-400 ml-1">({h.customers.name_kana})</span>}
+                          </td>
+                          <td className="px-5 py-3 text-gray-500">{h.users?.name || "—"}</td>
+                          <td className="px-5 py-3 text-gray-500 whitespace-nowrap">
+                            {h.create_at ? new Date(h.create_at).toLocaleString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"}
+                          </td>
+                          <td className="px-5 py-3 text-right">
+                            <button
+                              onClick={() => openSignHistoryDetail(h)}
+                              className="text-blue-600 hover:text-blue-800 text-xs font-bold px-3 py-1 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors"
+                            >
+                              詳細
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    {signHistoryList.length === 0 && (
+                      <tr><td colSpan={5} className="px-5 py-16 text-center text-gray-400">契約履歴がありません</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
@@ -1942,6 +2016,73 @@ const deleteCustomer = async (id) => {
           </div>
         )}
       </div>
+
+      {/* 契約履歴 詳細モーダル */}
+      {signHistoryDetail && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b flex justify-between items-center sticky top-0 bg-white z-10">
+              <div>
+                <h3 className="text-xl font-bold text-gray-800">{signHistoryDetail.history.contract_name || "契約詳細"}</h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {signHistoryDetail.history.create_at
+                    ? new Date(signHistoryDetail.history.create_at).toLocaleString("ja-JP")
+                    : ""}
+                </p>
+              </div>
+              <button onClick={() => setSignHistoryDetail(null)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
+            </div>
+            <div className="p-6 space-y-6">
+              {/* 基本情報 */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-xs font-semibold text-gray-500 mb-1">お客様名</p>
+                  <p className="font-bold text-gray-800">{signHistoryDetail.history.customers?.name || "—"}</p>
+                  {signHistoryDetail.history.customers?.name_kana && (
+                    <p className="text-xs text-gray-400">{signHistoryDetail.history.customers.name_kana}</p>
+                  )}
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-xs font-semibold text-gray-500 mb-1">担当スタッフ</p>
+                  <p className="font-bold text-gray-800">{signHistoryDetail.history.users?.name || "—"}</p>
+                </div>
+              </div>
+
+              {/* 入力項目 */}
+              {signHistoryDetail.inputs.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-bold text-gray-700 mb-3 border-b pb-2">入力内容</h4>
+                  <div className="space-y-2">
+                    {signHistoryDetail.inputs.map((inp) => {
+                      const templateItem = signHistoryDetail.templateItems.find((t) => t.item_no === inp.sign_item_no);
+                      return (
+                        <div key={inp.sign_item_no} className="flex gap-3 py-2 border-b border-gray-100 last:border-0">
+                          <span className="text-xs font-semibold text-gray-500 w-32 shrink-0 pt-0.5">
+                            {templateItem?.item_name || `項目 ${inp.sign_item_no}`}
+                          </span>
+                          <span className="text-sm text-gray-800 flex-1 break-all">{inp.sign_item_value || "—"}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {signHistoryDetail.inputs.length === 0 && (
+                <p className="text-sm text-gray-400 text-center py-4">入力データがありません</p>
+              )}
+            </div>
+            <div className="p-6 border-t flex justify-end">
+              <button
+                onClick={() => setSignHistoryDetail(null)}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-sm"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 事前受付URL削除確認モーダル */}
       {deleteOnetimeConfirmId && (
