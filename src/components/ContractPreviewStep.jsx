@@ -38,6 +38,60 @@ function resolveCanvasScale(element) {
   return Math.max(1, Math.min(baseScale, safeScale));
 }
 
+const DocPageImages = ({ doc }) => {
+  const [pageUrls, setPageUrls] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!doc.path) { setLoaded(true); return; }
+    const basename = doc.path.replace(/\.[^.]+$/, "");
+    const pageCount = doc.pageCount || 1;
+    let cancelled = false;
+    (async () => {
+      const urls = await Promise.all(
+        Array.from({ length: pageCount }, async (_, i) => {
+          const { data } = await supabase.storage.from("files").createSignedUrl(
+            `thumbnails/${basename}_p${i + 1}.jpg`, 3600
+          );
+          return data?.signedUrl || null;
+        })
+      );
+      if (!cancelled) {
+        setPageUrls(urls.filter(Boolean));
+        setLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [doc.path, doc.pageCount]);
+
+  if (!loaded) {
+    return (
+      <div className="bg-white shadow-2xl w-[210mm] min-h-[297mm] mx-auto mb-8 flex items-center justify-center">
+        <p className="text-sm text-gray-400">読み込み中...</p>
+      </div>
+    );
+  }
+
+  if (pageUrls.length === 0) {
+    return (
+      <div className="bg-white shadow-2xl w-[210mm] min-h-[100px] mx-auto mb-8 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 p-8">
+        <FileText size={40} className="text-gray-300 mb-2" />
+        <p className="text-gray-500 text-sm">{doc.title}</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {pageUrls.map((url, i) => (
+        <div key={i} className="bg-white shadow-2xl w-[210mm] mx-auto mb-4 overflow-hidden">
+          <img src={url} alt={`${doc.title} ${i + 1}ページ`} className="w-full block" />
+        </div>
+      ))}
+    </>
+  );
+};
+
 const ContractPreviewStep = ({
   customerData,
   staffFields,
@@ -61,34 +115,7 @@ const ContractPreviewStep = ({
     .map((id) => documentsList.find((doc) => doc.id === id))
     .filter(Boolean);
 
-  const [pdfUrls, setPdfUrls] = useState({});
   const [generating, setGenerating] = useState(false);
-
-  useEffect(() => {
-    let createdUrls = [];
-    let cancelled = false;
-
-    const fetchUrls = async () => {
-      const entries = await Promise.all(
-        attachedDocuments.map(async (doc) => {
-          if (!doc.path) return [doc.id, null];
-          const data = await downloadFromStorage(doc.path);
-          if (!data) return [doc.id, null];
-          const blobUrl = URL.createObjectURL(data);
-          createdUrls.push(blobUrl);
-          return [doc.id, blobUrl];
-        })
-      );
-      if (!cancelled) setPdfUrls(Object.fromEntries(entries));
-    };
-
-    if (attachedDocuments.length > 0) fetchUrls();
-
-    return () => {
-      cancelled = true;
-      createdUrls.forEach((u) => URL.revokeObjectURL(u));
-    };
-  }, [(attachmentIds || []).join(",")]);
 
   const generateMergedPdf = async () => {
     setGenerating(true);
@@ -319,37 +346,12 @@ const ContractPreviewStep = ({
       {/* 添付資料プレビュー（選択順で表示） */}
       {attachedDocuments.length > 0 && (
         <div className="mt-8 w-full max-w-4xl print:hidden">
-          <p className="text-center text-gray-500 mb-2">
+          <p className="text-center text-gray-500 mb-4 text-sm">
             --- 添付資料プレビュー（PDF保存ボタンで契約書と結合されます） ---
           </p>
-          {attachedDocuments.map((doc) => {
-            const url = pdfUrls[doc.id];
-            return (
-              <div
-                key={doc.id}
-                className="bg-white shadow-2xl w-[210mm] min-h-[297mm] mx-auto mb-8 overflow-hidden"
-              >
-                {url ? (
-                  <iframe
-                    src={`${url}#zoom=page-width`}
-                    title={doc.title}
-                    className="w-full h-[297mm] border-0"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-full min-h-[297mm] border-2 border-dashed border-gray-200 p-10">
-                    <FileText size={64} className="text-gray-300 mb-4" />
-                    <h2 className="text-2xl font-bold text-gray-700 mb-2">
-                      {doc.title}
-                    </h2>
-                    <p className="text-gray-500">{doc.filename}</p>
-                    <p className="text-sm text-gray-400 mt-4">
-                      PDFを読み込み中...
-                    </p>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {attachedDocuments.map((doc) => (
+            <DocPageImages key={doc.id} doc={doc} />
+          ))}
         </div>
       )}
     </div>

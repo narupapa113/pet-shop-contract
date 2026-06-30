@@ -27,12 +27,14 @@ import {
   List,
   LayoutDashboard,
   Briefcase,
+  Shield,
 } from "lucide-react";
 import { supabase, supabaseAdmin } from "../lib/supabase";
 import { STEP_TYPES, DEFAULT_TEMPLATES } from "../constants";
 import ContractPreviewStep from "../components/ContractPreviewStep";
 import SignatureStep from "../components/SignatureStep";
 import UserManagement from "../components/UserManagement";
+import RoleManagement from "../components/RoleManagement";
 import PdfCardThumbnail from "../components/PdfCardThumbnail";
 import * as pdfjsLib from "pdfjs-dist";
 
@@ -55,6 +57,42 @@ async function generatePdfThumbnailBlob(file) {
   return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
 }
 
+async function generateAllPageImageBlobs(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const blobs = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 1 });
+    const scale = 1500 / viewport.width;
+    const scaledViewport = page.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = scaledViewport.width;
+    canvas.height = scaledViewport.height;
+    await page.render({ canvasContext: canvas.getContext("2d"), viewport: scaledViewport }).promise;
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.88));
+    blobs.push(blob);
+  }
+  return blobs;
+}
+
+// adminPermissions の形式:
+//   null      = フル権限（auth_id なしの古いアカウント）
+//   undefined = 未ロード
+//   object    = { [function_id]: Set<sub_id> }
+//
+// can(permissions, functionId, subId): 指定の操作権限を持つか判定
+const can = (adminPermissions, functionId, subId) => {
+  if (adminPermissions === null || adminPermissions === undefined) return true;
+  return adminPermissions[functionId]?.has(subId) ?? false;
+};
+
+// canView: いずれかの function_id に sub_id=1（閲覧）があればメニューを表示
+const canView = (adminPermissions, functionIds) => {
+  if (adminPermissions === null || adminPermissions === undefined) return true;
+  return functionIds.some((id) => adminPermissions[id]?.has(1) ?? false);
+};
+
 const AdminDashboard = ({
   onLogout,
   staffTemplates,
@@ -71,6 +109,7 @@ const AdminDashboard = ({
   setUsers,
   sessions,
   setSessions,
+  adminPermissions,
 }) => {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [selectedTemplateId, setSelectedTemplateId] = useState(staffTemplates[0]?.id);
@@ -126,6 +165,7 @@ const AdminDashboard = ({
   const INPUT_TYPE_NUM = { text: 1, number: 2, date: 3, select: 4 };
 
   const addNewTemplate = async () => {
+    if (!can(adminPermissions, 5, 2)) return;
     const defaultFields = DEFAULT_TEMPLATES[0].fields;
     const { data, error } = await supabaseAdmin
       .from("contract_templates_header")
@@ -150,6 +190,7 @@ const AdminDashboard = ({
   };
 
   const deleteTemplate = async (id) => {
+    if (!can(adminPermissions, 5, 4)) return;
     if (staffTemplates.length <= 1) return alert("最後のテンプレートは削除できません");
     if (window.confirm("このテンプレートを削除してもよろしいですか？")) {
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -164,6 +205,7 @@ const AdminDashboard = ({
   };
 
   const saveTemplate = async () => {
+    if (!can(adminPermissions, 5, 3)) return;
     if (!activeTemplate) return;
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(activeTemplate.id)) {
@@ -223,6 +265,7 @@ const AdminDashboard = ({
           filename: f.path ? f.path.split("/").pop() : "",
           path: f.path,
           thumbnailPath: thumbPath,
+          pageCount: f.page_count || 1,
           type: "PDF",
         };
       }));
@@ -331,6 +374,9 @@ const AdminDashboard = ({
   };
 
   const handleContentSave = async () => {
+    const contentFid = contentTab === "video" ? 6 : 7;
+    const contentSubId = editingContentId ? 3 : 2;
+    if (!can(adminPermissions, contentFid, contentSubId)) return;
     if (!newContentData.title) return;
     if (contentTab === "video") {
       const duplicate = videoPlaylist.find((v) => v.title === newContentData.title && v.id !== editingContentId);
@@ -431,19 +477,36 @@ const AdminDashboard = ({
           clearInterval(fakeProgress);
           setUploadProgressPct(100);
           if (uploadError) throw uploadError;
-          setUploadProgress("サムネイルを生成中...");
-          const thumbPath = `thumbnails/${filePath.replace(/\.[^.]+$/, "")}.jpg`;
+          setUploadProgress("ページ画像を生成中...");
+          const basename = filePath.replace(/\.[^.]+$/, "");
+          let pageCount = 1;
           try {
-            const thumbBlob = await generatePdfThumbnailBlob(selectedFile);
-            if (thumbBlob) {
-              await supabaseAdmin.storage.from("files").upload(thumbPath, thumbBlob, { contentType: "image/jpeg", upsert: true });
+            const pageBlobs = await generateAllPageImageBlobs(selectedFile);
+            pageCount = pageBlobs.length;
+            await Promise.all(
+              pageBlobs.map((blob, idx) =>
+                supabaseAdmin.storage.from("files").upload(
+                  `thumbnails/${basename}_p${idx + 1}.jpg`,
+                  blob,
+                  { contentType: "image/jpeg", upsert: true }
+                )
+              )
+            );
+            // page 1 を card用サムネイルとして保存
+            if (pageBlobs[0]) {
+              await supabaseAdmin.storage.from("files").upload(
+                `thumbnails/${basename}.jpg`,
+                pageBlobs[0],
+                { contentType: "image/jpeg", upsert: true }
+              );
             }
-          } catch { /* サムネイル生成失敗は無視 */ }
+          } catch { /* 画像生成失敗は無視 */ }
           setUploadProgress("情報を保存中...");
           const { error: dbError } = await supabaseAdmin.from("files").insert({
             id: crypto.randomUUID(),
             name: newContentData.title,
             path: filePath,
+            page_count: pageCount,
             create_at: new Date().toISOString(),
           });
           if (dbError) throw dbError;
@@ -460,6 +523,7 @@ const AdminDashboard = ({
   };
 
   const deleteContent = async (id) => {
+    if (!can(adminPermissions, contentTab === "video" ? 6 : 7, 4)) return;
     if (contentTab === "video") {
       const video = videoPlaylist.find((v) => v.id === id);
       if (video?.path) await supabase.storage.from("videos").remove([video.path]);
@@ -513,7 +577,11 @@ const AdminDashboard = ({
   const openFlowModal = (flow = null) => {
     if (flow) {
       setEditingFlowId(flow.id);
-      setNewFlowData({ name: flow.name, description: flow.description || "", templateId: flow.templateId || staffTemplates[0]?.id || "", attachmentIds: flow.attachmentIds || [] });
+      // DBから削除済みの添付資料IDを除外し、残っているものだけ①から順に並べ直す
+      const validAttachmentIds = (flow.attachmentIds || []).filter((id) =>
+        documentsList.some((doc) => doc.id === id)
+      );
+      setNewFlowData({ name: flow.name, description: flow.description || "", templateId: flow.templateId || staffTemplates[0]?.id || "", attachmentIds: validAttachmentIds });
       const videoStep = flow.steps.find((s) => s.type === "VIDEO");
       const merged = FIXED_STEPS.map((fs) => {
         if (fs.type === "VIDEO") return { ...fs, videoIds: videoStep?.videoIds || [] };
@@ -570,6 +638,7 @@ const AdminDashboard = ({
   const STEP_TYPE_NUM = { VIDEO: 1, CUSTOMER_INFO: 2, SIGNATURE: 3, STAFF_INPUT: 4, CONTRACT_PREVIEW: 5 };
 
   const saveFlow = async () => {
+    if (!can(adminPermissions, 8, editingFlowId ? 3 : 2)) return;
     if (!newFlowData.name) return;
     const validUuid = (v) => (v && uuidRegex.test(v) ? v : null);
     const headerPayload = {
@@ -610,6 +679,7 @@ const AdminDashboard = ({
   };
 
   const deleteFlow = async (id) => {
+    if (!can(adminPermissions, 8, 4)) return;
     if (window.confirm("このフローを削除してもよろしいですか？")) {
       await supabaseAdmin.from("flow_step").delete().eq("id", id);
       await supabaseAdmin.from("flow_header").delete().eq("id", id);
@@ -647,6 +717,7 @@ const AdminDashboard = ({
   };
 
   const createOnetimeUrl = async () => {
+    if (!can(adminPermissions, 2, 2)) return;
     if (!selectedFlowForSession) return alert("接客フローを選択してください");
     const id = crypto.randomUUID();
     const url = `${window.location.origin}?onetime=${id}`;
@@ -678,6 +749,7 @@ const AdminDashboard = ({
   };
 
   const deleteOnetimeUrl = async (id) => {
+    if (!can(adminPermissions, 2, 4)) return;
     await supabaseAdmin.from("otp_codes").delete().eq("onetime_id", id);
     await supabaseAdmin.from("onetime_url_manage").delete().eq("id", id);
     setDeleteOnetimeConfirmId(null);
@@ -690,6 +762,7 @@ const AdminDashboard = ({
   const [staffInputSaving, setStaffInputSaving] = useState(false);
 
   const openStaffInputModal = async (row) => {
+    if (!can(adminPermissions, 2, 3)) return;
     const flow = flows.find((f) => f.id === row.flow_id);
     if (!flow) return;
     const template = staffTemplates.find((t) => t.id === flow.templateId);
@@ -857,6 +930,8 @@ const AdminDashboard = ({
   };
 
   const saveCustomer = async () => {
+    const requiredSub = customerModal?.mode === "add" ? 2 : 3;
+    if (!can(adminPermissions, 4, requiredSub)) return;
     if (!customerModal?.data?.name) return alert("名前を入力してください");
     const d = customerModal.data;
     const remarksPayload = {
@@ -891,6 +966,7 @@ const AdminDashboard = ({
     fetchCustomers();
   };
 const deleteCustomer = async (id) => {
+  if (!can(adminPermissions, 4, 4)) return;
   try {
     const { error } = await supabaseAdmin
       .from("customers")
@@ -958,10 +1034,19 @@ const deleteCustomer = async (id) => {
   }, [activeTab, fetchSignHistory]);
 
   // --- 設定 ---
-  const [settingsTab, setSettingsTab] = useState("company");
+  // 表示可能な最初の設定サブタブを初期値にする
+  const initialSettingsTab = () => {
+    if (can(adminPermissions, 9, 1)) return "company";
+    if (can(adminPermissions, 10, 1)) return "users";
+    if (can(adminPermissions, 12, 1)) return "roles";
+    if (can(adminPermissions, 11, 1)) return "other";
+    return "company";
+  };
+  const [settingsTab, setSettingsTab] = useState(initialSettingsTab);
   const [tempCompanyInfo, setTempCompanyInfo] = useState(companyInfo);
 
   const handleSaveCompany = () => {
+    if (!can(adminPermissions, 9, 3)) return;
     setCompanyInfo(tempCompanyInfo);
     alert("会社情報を保存しました");
   };
@@ -976,6 +1061,25 @@ const deleteCustomer = async (id) => {
     </button>
   );
 
+  // 権限ロード完了前はローディング表示（チラ見え防止）
+  if (adminPermissions === undefined) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-gray-500 text-sm">読み込み中...</div>
+      </div>
+    );
+  }
+
+  // 各メニューの閲覧可否
+  const showDashboard = canView(adminPermissions, [1]);
+  const showRemote    = canView(adminPermissions, [2]);
+  const showHistory   = canView(adminPermissions, [3]);
+  const showCustomers = canView(adminPermissions, [4]);
+  const showTemplate  = canView(adminPermissions, [5]);
+  const showUpload    = canView(adminPermissions, [6, 7]);
+  const showFlow      = canView(adminPermissions, [8]);
+  const showSettings  = canView(adminPermissions, [9, 10, 11, 12]);
+
   return (
     <div className="min-h-screen bg-gray-100 flex">
       {/* サイドバー */}
@@ -988,16 +1092,16 @@ const deleteCustomer = async (id) => {
         </div>
         <nav className="flex-1 p-4 overflow-y-auto">
           <p className="text-xs font-bold text-gray-400 mb-2 px-4">メインメニュー</p>
-          <MenuButton id="dashboard" icon={LayoutDashboard} label="ダッシュボード" />
-          <MenuButton id="remote" icon={Smartphone} label="事前受付URL発行" />
-          <MenuButton id="history" icon={History} label="契約履歴" />
-          <MenuButton id="customers" icon={Users} label="顧客管理" />
-          <MenuButton id="template" icon={FileText} label="契約書テンプレート" />
-          <MenuButton id="upload" icon={Upload} label="コンテンツ管理" />
-          <MenuButton id="flow" icon={List} label="接客フロー作成" />
+          {showDashboard && <MenuButton id="dashboard" icon={LayoutDashboard} label="ダッシュボード" />}
+          {showRemote    && <MenuButton id="remote" icon={Smartphone} label="事前受付URL発行" />}
+          {showHistory   && <MenuButton id="history" icon={History} label="契約履歴" />}
+          {showCustomers && <MenuButton id="customers" icon={Users} label="顧客管理" />}
+          {showTemplate  && <MenuButton id="template" icon={FileText} label="契約書テンプレート" />}
+          {showUpload    && <MenuButton id="upload" icon={Upload} label="コンテンツ管理" />}
+          {showFlow      && <MenuButton id="flow" icon={List} label="接客フロー作成" />}
           <div className="my-4 border-t border-gray-100"></div>
           <p className="text-xs font-bold text-gray-400 mb-2 px-4">システム</p>
-          <MenuButton id="settings" icon={Settings} label="設定" />
+          {showSettings  && <MenuButton id="settings" icon={Settings} label="設定" />}
         </nav>
         <div className="p-4 border-t bg-gray-50">
           <button onClick={onLogout} className="flex items-center text-red-600 hover:text-red-700 font-medium px-4 py-2 w-full">
@@ -1009,7 +1113,7 @@ const deleteCustomer = async (id) => {
       {/* メインエリア */}
       <div className="flex-1 overflow-auto p-8 relative">
         {/* ダッシュボード */}
-        {activeTab === "dashboard" && (
+        {activeTab === "dashboard" && showDashboard && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-[500px]">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
@@ -1038,7 +1142,7 @@ const deleteCustomer = async (id) => {
         )}
 
         {/* 事前受付URL発行 */}
-        {activeTab === "remote" && (
+        {activeTab === "remote" && showRemote && (
           <div className="max-w-6xl mx-auto">
             <h2 className="text-2xl font-bold text-gray-800 mb-6">事前受付用URLの発行・管理</h2>
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-8">
@@ -1072,9 +1176,11 @@ const deleteCustomer = async (id) => {
                     ))}
                   </select>
                 </div>
-                <button onClick={createOnetimeUrl} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 flex items-center whitespace-nowrap">
-                  <Link size={18} className="mr-2" /> URLを発行する
-                </button>
+                {can(adminPermissions, 2, 2) && (
+                  <button onClick={createOnetimeUrl} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 flex items-center whitespace-nowrap">
+                    <Link size={18} className="mr-2" /> URLを発行する
+                  </button>
+                )}
               </div>
             </div>
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
@@ -1137,20 +1243,24 @@ const deleteCustomer = async (id) => {
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
-                              <button
-                                disabled={row.status < 4 || row.status >= 6}
-                                onClick={() => openStaffInputModal(row)}
-                                className={`px-3 py-1 rounded text-xs font-medium border transition-colors whitespace-nowrap ${row.status >= 4 && row.status < 6 ? "border-blue-500 text-blue-600 hover:bg-blue-50" : "border-gray-200 text-gray-300 cursor-not-allowed"}`}
-                              >
-                                署名へ
-                              </button>
-                              <button
-                                onClick={() => setDeleteOnetimeConfirmId(row.id)}
-                                className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                                title="削除"
-                              >
-                                <Trash2 size={15} />
-                              </button>
+                              {can(adminPermissions, 2, 3) && (
+                                <button
+                                  disabled={row.status < 4 || row.status >= 6}
+                                  onClick={() => openStaffInputModal(row)}
+                                  className={`px-3 py-1 rounded text-xs font-medium border transition-colors whitespace-nowrap ${row.status >= 4 && row.status < 6 ? "border-blue-500 text-blue-600 hover:bg-blue-50" : "border-gray-200 text-gray-300 cursor-not-allowed"}`}
+                                >
+                                  署名へ
+                                </button>
+                              )}
+                              {can(adminPermissions, 2, 4) && (
+                                <button
+                                  onClick={() => setDeleteOnetimeConfirmId(row.id)}
+                                  className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                                  title="削除"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -1303,7 +1413,7 @@ const deleteCustomer = async (id) => {
         )}
 
         {/* 契約書テンプレート */}
-        {activeTab === "template" && (
+        {activeTab === "template" && showTemplate && (
           <div className="max-w-5xl mx-auto">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
               <div className="flex justify-between items-start mb-6">
@@ -1312,12 +1422,16 @@ const deleteCustomer = async (id) => {
                   <p className="text-gray-500 text-sm mt-1">店舗スタッフが接客時に入力する項目のデフォルト設定を管理します。</p>
                 </div>
                 <div className="flex space-x-3">
-                  <button onClick={addField} className="flex items-center px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 font-medium">
-                    <Plus size={16} className="mr-2" /> 項目を追加
-                  </button>
-                  <button onClick={saveTemplate} className="flex items-center px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow-md">
-                    <Save size={18} className="mr-2" /> 設定を保存
-                  </button>
+                  {can(adminPermissions, 5, 2) && (
+                    <button onClick={addField} className="flex items-center px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 font-medium">
+                      <Plus size={16} className="mr-2" /> 項目を追加
+                    </button>
+                  )}
+                  {can(adminPermissions, 5, 3) && (
+                    <button onClick={saveTemplate} className="flex items-center px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow-md">
+                      <Save size={18} className="mr-2" /> 設定を保存
+                    </button>
+                  )}
                 </div>
               </div>
               {isSaved && (
@@ -1329,9 +1443,11 @@ const deleteCustomer = async (id) => {
                 <div className="w-64 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
                   <div className="p-4 bg-gray-50 border-b font-bold text-gray-700 flex justify-between items-center">
                     <span>テンプレート一覧</span>
-                    <button onClick={addNewTemplate} className="text-blue-600 hover:bg-blue-100 p-1 rounded">
-                      <Plus size={18} />
-                    </button>
+                    {can(adminPermissions, 5, 2) && (
+                      <button onClick={addNewTemplate} className="text-blue-600 hover:bg-blue-100 p-1 rounded">
+                        <Plus size={18} />
+                      </button>
+                    )}
                   </div>
                   <div className="overflow-y-auto flex-1">
                     {staffTemplates.map((tpl) => (
@@ -1355,13 +1471,16 @@ const deleteCustomer = async (id) => {
                             type="text"
                             value={activeTemplate.name}
                             onChange={(e) => updateTemplateName(e.target.value)}
-                            className="w-full text-xl font-bold text-gray-800 border-none focus:ring-0 p-0"
+                            disabled={!can(adminPermissions, 5, 3)}
+                            className="w-full text-xl font-bold text-gray-800 border-none focus:ring-0 p-0 disabled:text-gray-500 disabled:cursor-not-allowed"
                           />
                         </div>
                         <div className="flex space-x-3">
-                          <button onClick={() => deleteTemplate(activeTemplate.id)} className="flex items-center px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg font-medium border border-red-200">
-                            <Trash2 size={16} className="mr-2" /> 削除
-                          </button>
+                          {can(adminPermissions, 5, 4) && (
+                            <button onClick={() => deleteTemplate(activeTemplate.id)} className="flex items-center px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg font-medium border border-red-200">
+                              <Trash2 size={16} className="mr-2" /> 削除
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div className="overflow-y-auto flex-1 pr-2">
@@ -1378,10 +1497,10 @@ const deleteCustomer = async (id) => {
                             {activeTemplate.fields.map((field, index) => (
                               <tr key={field.id} className="hover:bg-gray-50">
                                 <td className="p-2">
-                                  <input type="text" value={field.label} onChange={(e) => updateField(index, "label", e.target.value)} className="w-full p-2 border border-gray-300 rounded" />
+                                  <input type="text" value={field.label} onChange={(e) => updateField(index, "label", e.target.value)} className="w-full p-2 border border-gray-300 rounded disabled:bg-gray-50 disabled:text-gray-500" disabled={!can(adminPermissions, 5, 3)} />
                                 </td>
                                 <td className="p-2">
-                                  <select value={field.type} onChange={(e) => updateField(index, "type", e.target.value)} className="w-full p-2 border border-gray-300 rounded bg-white">
+                                  <select value={field.type} onChange={(e) => updateField(index, "type", e.target.value)} className="w-full p-2 border border-gray-300 rounded bg-white disabled:bg-gray-50 disabled:text-gray-500" disabled={!can(adminPermissions, 5, 3)}>
                                     <option value="text">テキスト</option>
                                     <option value="number">数値</option>
                                     <option value="date">日付</option>
@@ -1389,12 +1508,15 @@ const deleteCustomer = async (id) => {
                                   </select>
                                 </td>
                                 <td className="p-2">
-                                  <input type="text" value={field.placeholder || ""} onChange={(e) => updateField(index, "placeholder", e.target.value)} className="w-full p-2 border border-gray-300 rounded" disabled={field.type === "select" || field.type === "date"} />
+                                  <input type="text" value={field.placeholder || ""} onChange={(e) => updateField(index, "placeholder", e.target.value)} className="w-full p-2 border border-gray-300 rounded disabled:bg-gray-50 disabled:text-gray-500" disabled={!can(adminPermissions, 5, 3) || field.type === "select" || field.type === "date"} />
                                 </td>
                                 <td className="p-2 text-center">
-                                  <button onClick={() => removeField(index)} className="text-gray-400 hover:text-red-500">
-                                    <Trash2 size={18} />
-                                  </button>
+                                  {/* DB未保存のローカル項目は削除権限なしでも削除可 */}
+                                  {(can(adminPermissions, 5, 4) || !uuidRegex.test(field.id)) && (
+                                    <button onClick={() => removeField(index)} className="text-gray-400 hover:text-red-500">
+                                      <Trash2 size={18} />
+                                    </button>
+                                  )}
                                 </td>
                               </tr>
                             ))}
@@ -1412,7 +1534,7 @@ const deleteCustomer = async (id) => {
         )}
 
         {/* コンテンツ管理 */}
-        {activeTab === "upload" && (
+        {activeTab === "upload" && showUpload && (
           <div className="max-w-6xl mx-auto">
             <div className="flex space-x-1 mb-6 border-b">
               <button onClick={() => setContentTab("video")} className={`px-6 py-3 font-bold rounded-t-lg transition-colors ${contentTab === "video" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>動画コンテンツ</button>
@@ -1420,9 +1542,11 @@ const deleteCustomer = async (id) => {
             </div>
             <div className="flex justify-between items-center mb-6">
               <p className="text-gray-600">{contentTab === "video" ? "接客時に再生する動画コンテンツを管理します。" : "契約書の裏面に印刷するPDF資料を管理します。"}</p>
-              <button onClick={() => openUploadModal()} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 flex items-center shadow-md">
-                <Upload size={18} className="mr-2" /> 新規アップロード
-              </button>
+              {can(adminPermissions, contentTab === "video" ? 6 : 7, 2) && (
+                <button onClick={() => openUploadModal()} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 flex items-center shadow-md">
+                  <Upload size={18} className="mr-2" /> 新規アップロード
+                </button>
+              )}
             </div>
             {contentTab === "video" ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1444,12 +1568,16 @@ const deleteCustomer = async (id) => {
                         <p className="text-sm text-gray-500 mb-2 h-10 overflow-hidden line-clamp-2">{video.description || "説明なし"}</p>
                         {video.createdAt && <p className="text-xs text-gray-400 mb-3">登録日時: {video.createdAt}</p>}
                         <div className="flex justify-between items-center border-t pt-3">
-                          <button onClick={() => openUploadModal(video)} className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center">
-                            <Edit2 size={14} className="mr-1" /> 編集
-                          </button>
-                          <button onClick={() => setDeleteConfirmId(video.id)} className="text-red-500 hover:text-red-700 text-sm font-medium flex items-center">
-                            <Trash2 size={14} className="mr-1" /> 削除
-                          </button>
+                          {can(adminPermissions, 6, 3) ? (
+                            <button onClick={() => openUploadModal(video)} className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center">
+                              <Edit2 size={14} className="mr-1" /> 編集
+                            </button>
+                          ) : <span />}
+                          {can(adminPermissions, 6, 4) && (
+                            <button onClick={() => setDeleteConfirmId(video.id)} className="text-red-500 hover:text-red-700 text-sm font-medium flex items-center">
+                              <Trash2 size={14} className="mr-1" /> 削除
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1482,12 +1610,16 @@ const deleteCustomer = async (id) => {
                       </div>
                       <p className="text-xs text-gray-500 mb-4">{doc.filename}</p>
                       <div className="flex justify-between items-center border-t pt-3">
-                        <button onClick={() => openUploadModal(doc)} className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center">
-                          <Edit2 size={14} className="mr-1" /> 編集
-                        </button>
-                        <button onClick={() => setDeleteConfirmId(doc.id)} className="text-red-500 hover:text-red-700 text-sm font-medium flex items-center">
-                          <Trash2 size={14} className="mr-1" /> 削除
-                        </button>
+                        {can(adminPermissions, 7, 3) ? (
+                          <button onClick={() => openUploadModal(doc)} className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center">
+                            <Edit2 size={14} className="mr-1" /> 編集
+                          </button>
+                        ) : <span />}
+                        {can(adminPermissions, 7, 4) && (
+                          <button onClick={() => setDeleteConfirmId(doc.id)} className="text-red-500 hover:text-red-700 text-sm font-medium flex items-center">
+                            <Trash2 size={14} className="mr-1" /> 削除
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1551,9 +1683,11 @@ const deleteCustomer = async (id) => {
                   </div>
                   <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3">
                     <button onClick={closeUploadModal} disabled={isUploading} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-white font-medium disabled:opacity-50">キャンセル</button>
-                    <button onClick={handleContentSave} disabled={!newContentData.title || isUploading} className={`px-6 py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center ${!newContentData.title || isUploading ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-700 shadow-md"}`}>
-                      {isUploading ? uploadProgress || "保存中..." : "保存する"}
-                    </button>
+                    {can(adminPermissions, contentTab === "video" ? 6 : 7, editingContentId ? 3 : 2) && (
+                      <button onClick={handleContentSave} disabled={!newContentData.title || isUploading} className={`px-6 py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center ${!newContentData.title || isUploading ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-700 shadow-md"}`}>
+                        {isUploading ? uploadProgress || "保存中..." : "保存する"}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1570,7 +1704,9 @@ const deleteCustomer = async (id) => {
                   </p>
                   <div className="flex justify-end space-x-3">
                     <button onClick={() => setDeleteConfirmId(null)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 font-medium">キャンセル</button>
-                    <button onClick={() => deleteContent(deleteConfirmId)} className="px-6 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700">削除する</button>
+                    {can(adminPermissions, contentTab === "video" ? 6 : 7, 4) && (
+                      <button onClick={() => deleteContent(deleteConfirmId)} className="px-6 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700">削除する</button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1611,13 +1747,15 @@ const deleteCustomer = async (id) => {
         )}
 
         {/* フロー作成 */}
-        {activeTab === "flow" && (
+        {activeTab === "flow" && showFlow && (
           <div className="max-w-5xl mx-auto">
             <div className="flex justify-between items-center mb-6">
               <p className="text-gray-600">接客時の画面遷移フローを作成・編集します。</p>
-              <button onClick={() => openFlowModal()} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 flex items-center shadow-md">
-                <Plus size={18} className="mr-2" /> 新規フロー作成
-              </button>
+              {can(adminPermissions, 8, 2) && (
+                <button onClick={() => openFlowModal()} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 flex items-center shadow-md">
+                  <Plus size={18} className="mr-2" /> 新規フロー作成
+                </button>
+              )}
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <table className="w-full text-sm text-left">
@@ -1639,11 +1777,15 @@ const deleteCustomer = async (id) => {
                       <td className="px-5 py-3 font-medium text-gray-800">{flow.name}</td>
                       <td className="px-5 py-3 text-gray-500">{staffTemplates.find((t) => t.id === flow.templateId)?.name || "未設定"}</td>
                       <td className="px-5 py-3 text-center text-gray-600">{flow.steps.length}</td>
-                      <td className="px-5 py-3 text-center text-gray-600">{flow.attachmentIds?.length || 0}</td>
+                      <td className="px-5 py-3 text-center text-gray-600">{(flow.attachmentIds || []).filter((id) => documentsList.some((doc) => doc.id === id)).length}</td>
                       <td className="px-5 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <button onClick={() => openFlowModal(flow)} className="text-gray-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
-                          <button onClick={() => deleteFlow(flow.id)} className="text-gray-400 hover:text-red-600 transition-colors"><Trash2 size={16} /></button>
+                          {can(adminPermissions, 8, 3) && (
+                            <button onClick={() => openFlowModal(flow)} className="text-gray-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
+                          )}
+                          {can(adminPermissions, 8, 4) && (
+                            <button onClick={() => deleteFlow(flow.id)} className="text-gray-400 hover:text-red-600 transition-colors"><Trash2 size={16} /></button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1802,7 +1944,9 @@ const deleteCustomer = async (id) => {
                   </div>
                   <div className="p-6 border-t bg-gray-50 flex justify-end space-x-3">
                     <button onClick={() => setFlowModalOpen(false)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-white font-medium">キャンセル</button>
-                    <button onClick={saveFlow} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-md">保存する</button>
+                    {can(adminPermissions, 8, editingFlowId ? 3 : 2) && (
+                      <button onClick={saveFlow} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-md">保存する</button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1811,7 +1955,7 @@ const deleteCustomer = async (id) => {
         )}
 
         {/* 契約履歴 */}
-        {activeTab === "history" && (
+        {activeTab === "history" && showHistory && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 min-h-[500px]">
             <div className="p-6 border-b border-gray-100 flex flex-wrap justify-between items-center gap-3">
               <h3 className="text-lg font-bold text-gray-800">契約履歴一覧</h3>
@@ -1883,7 +2027,7 @@ const deleteCustomer = async (id) => {
         )}
 
         {/* 顧客管理 */}
-        {activeTab === "customers" && (
+        {activeTab === "customers" && showCustomers && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 min-h-[500px]">
             <div className="p-6 border-b border-gray-100 flex flex-wrap justify-between items-center gap-3">
               <h3 className="text-lg font-bold text-gray-800">顧客情報管理</h3>
@@ -1904,12 +2048,14 @@ const deleteCustomer = async (id) => {
                   onClick={() => { setCustomerSearchQuery(""); setCustomerSearchResults(null); }}
                   className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50"
                 >全表示</button>
-                <button
-                  onClick={() => setCustomerModal({ mode: "add", data: { ...EMPTY_CUSTOMER } })}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 flex items-center shadow-sm text-sm"
-                >
-                  <Plus size={16} className="mr-1.5" /> 顧客を追加
-                </button>
+                {can(adminPermissions, 4, 2) && (
+                  <button
+                    onClick={() => setCustomerModal({ mode: "add", data: { ...EMPTY_CUSTOMER } })}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 flex items-center shadow-sm text-sm"
+                  >
+                    <Plus size={16} className="mr-1.5" /> 顧客を追加
+                  </button>
+                )}
               </div>
             </div>
             {customersLoading ? (
@@ -1947,21 +2093,25 @@ const deleteCustomer = async (id) => {
                               onClick={() => setCustomerModal({ mode: "detail", data: customer })}
                               className="px-2 py-1 text-xs border border-gray-300 rounded text-gray-600 hover:bg-gray-50 font-medium"
                             >詳細</button>
-                            <button
-                              onClick={() => {
-                                setCustomerModal({ mode: "edit", data: {
-                                  ...customer,
-                                  remarks1: customer.remarks || "",
-                                  remarks2: customer.remarks2 || "",
-                                  remarks3: customer.remarks3 || "",
-                                } });
-                              }}
-                              className="px-2 py-1 text-xs border border-blue-300 rounded text-blue-600 hover:bg-blue-50 font-medium"
-                            >編集</button>
-                            <button
-                              onClick={() => setCustomerDeleteConfirmId(customer.id)}
-                              className="px-2 py-1 text-xs border border-red-200 rounded text-red-500 hover:bg-red-50 font-medium"
-                            >削除</button>
+                            {can(adminPermissions, 4, 3) && (
+                              <button
+                                onClick={() => {
+                                  setCustomerModal({ mode: "edit", data: {
+                                    ...customer,
+                                    remarks1: customer.remarks || "",
+                                    remarks2: customer.remarks2 || "",
+                                    remarks3: customer.remarks3 || "",
+                                  } });
+                                }}
+                                className="px-2 py-1 text-xs border border-blue-300 rounded text-blue-600 hover:bg-blue-50 font-medium"
+                              >編集</button>
+                            )}
+                            {can(adminPermissions, 4, 4) && (
+                              <button
+                                onClick={() => setCustomerDeleteConfirmId(customer.id)}
+                                className="px-2 py-1 text-xs border border-red-200 rounded text-red-500 hover:bg-red-50 font-medium"
+                              >削除</button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1974,19 +2124,30 @@ const deleteCustomer = async (id) => {
         )}
 
         {/* 設定 */}
-        {activeTab === "settings" && (
+        {activeTab === "settings" && showSettings && (
           <div className="max-w-6xl mx-auto">
             <div className="flex flex-col md:flex-row gap-6">
               <div className="w-full md:w-64 bg-white rounded-xl shadow-sm border border-gray-200 p-2 h-fit">
-                <button onClick={() => setSettingsTab("company")} className={`w-full text-left px-4 py-3 rounded-lg mb-1 flex items-center ${settingsTab === "company" ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-600 hover:bg-gray-50"}`}>
-                  <Briefcase size={18} className="mr-3" /> 会社情報
-                </button>
-                <button onClick={() => setSettingsTab("users")} className={`w-full text-left px-4 py-3 rounded-lg mb-1 flex items-center ${settingsTab === "users" ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-600 hover:bg-gray-50"}`}>
-                  <Users size={18} className="mr-3" /> 権限・ユーザー管理
-                </button>
-                <button onClick={() => setSettingsTab("other")} className={`w-full text-left px-4 py-3 rounded-lg mb-1 flex items-center ${settingsTab === "other" ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-600 hover:bg-gray-50"}`}>
-                  <Settings size={18} className="mr-3" /> その他
-                </button>
+                {can(adminPermissions, 9, 1) && (
+                  <button onClick={() => setSettingsTab("company")} className={`w-full text-left px-4 py-3 rounded-lg mb-1 flex items-center ${settingsTab === "company" ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-600 hover:bg-gray-50"}`}>
+                    <Briefcase size={18} className="mr-3" /> 会社情報
+                  </button>
+                )}
+                {can(adminPermissions, 10, 1) && (
+                  <button onClick={() => setSettingsTab("users")} className={`w-full text-left px-4 py-3 rounded-lg mb-1 flex items-center ${settingsTab === "users" ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-600 hover:bg-gray-50"}`}>
+                    <Users size={18} className="mr-3" /> ユーザー管理
+                  </button>
+                )}
+                {can(adminPermissions, 12, 1) && (
+                  <button onClick={() => setSettingsTab("roles")} className={`w-full text-left px-4 py-3 rounded-lg mb-1 flex items-center ${settingsTab === "roles" ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-600 hover:bg-gray-50"}`}>
+                    <Shield size={18} className="mr-3" /> 権限管理
+                  </button>
+                )}
+                {can(adminPermissions, 11, 1) && (
+                  <button onClick={() => setSettingsTab("other")} className={`w-full text-left px-4 py-3 rounded-lg mb-1 flex items-center ${settingsTab === "other" ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-600 hover:bg-gray-50"}`}>
+                    <Settings size={18} className="mr-3" /> その他
+                  </button>
+                )}
               </div>
               <div className="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 p-8 min-h-[500px]">
                 {settingsTab === "company" && (
@@ -1999,18 +2160,22 @@ const deleteCustomer = async (id) => {
                           type="text"
                           value={tempCompanyInfo.name}
                           onChange={(e) => setTempCompanyInfo({ ...tempCompanyInfo, name: e.target.value })}
-                          className="w-full p-3 border border-gray-300 rounded-lg"
+                          disabled={!can(adminPermissions, 9, 3)}
+                          className="w-full p-3 border border-gray-300 rounded-lg disabled:bg-gray-50 disabled:text-gray-500"
                         />
                       </div>
-                      <div className="pt-6">
-                        <button onClick={handleSaveCompany} className="px-8 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-md flex items-center">
-                          <Save size={18} className="mr-2" /> 保存する
-                        </button>
-                      </div>
+                      {can(adminPermissions, 9, 3) && (
+                        <div className="pt-6">
+                          <button onClick={handleSaveCompany} className="px-8 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-md flex items-center">
+                            <Save size={18} className="mr-2" /> 保存する
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
-                {settingsTab === "users" && <UserManagement />}
+                {settingsTab === "roles" && <RoleManagement adminPermissions={adminPermissions} />}
+                {settingsTab === "users" && <UserManagement adminPermissions={adminPermissions} />}
               </div>
             </div>
           </div>
@@ -2095,7 +2260,9 @@ const deleteCustomer = async (id) => {
             </p>
             <div className="flex justify-end space-x-3">
               <button onClick={() => setDeleteOnetimeConfirmId(null)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 font-medium">キャンセル</button>
-              <button onClick={() => deleteOnetimeUrl(deleteOnetimeConfirmId)} className="px-6 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700">削除する</button>
+              {can(adminPermissions, 2, 4) && (
+                <button onClick={() => deleteOnetimeUrl(deleteOnetimeConfirmId)} className="px-6 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700">削除する</button>
+              )}
             </div>
           </div>
         </div>
@@ -2161,7 +2328,9 @@ const deleteCustomer = async (id) => {
             </div>
             <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3">
               <button onClick={() => setCustomerModal(null)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-white font-medium">キャンセル</button>
-              <button onClick={saveCustomer} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-md">保存する</button>
+              {can(adminPermissions, 4, customerModal?.mode === "add" ? 2 : 3) && (
+                <button onClick={saveCustomer} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-md">保存する</button>
+              )}
             </div>
           </div>
         </div>
@@ -2239,7 +2408,9 @@ const deleteCustomer = async (id) => {
             </p>
             <div className="flex justify-end space-x-3">
               <button onClick={() => setCustomerDeleteConfirmId(null)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 font-medium">キャンセル</button>
-              <button onClick={() => deleteCustomer(customerDeleteConfirmId)} className="px-6 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700">削除する</button>
+              {can(adminPermissions, 4, 4) && (
+                <button onClick={() => deleteCustomer(customerDeleteConfirmId)} className="px-6 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700">削除する</button>
+              )}
             </div>
           </div>
         </div>

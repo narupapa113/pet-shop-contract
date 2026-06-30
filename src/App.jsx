@@ -61,6 +61,7 @@ const useAppData = () => {
           filename: f.path ? f.path.split("/").pop() : "",
           path: f.path,
           type: "PDF",
+          pageCount: f.page_count || 1,
         })));
       }
 
@@ -147,7 +148,8 @@ const RoleSelectGuard = ({ companyName }) => {
 };
 
 // 保護ルート: 未認証またはロール不一致はログイン画面へ
-const AuthGuard = ({ role, children }) => {
+// admin の場合は閲覧権限のある function_id の Set を取得して onPermissionsLoaded に渡す
+const AuthGuard = ({ role, children, onPermissionsLoaded }) => {
   const [checking, setChecking] = useState(true);
   const [allowed, setAllowed] = useState(false);
 
@@ -157,8 +159,32 @@ const AuthGuard = ({ role, children }) => {
       if (!session) { setChecking(false); return; }
       const uid = session.user.id;
       if (role === "admin") {
-        const { data } = await supabase.from("admins").select("id").eq("id", uid).maybeSingle();
-        setAllowed(!!data);
+        const { data: adminRow } = await supabase
+          .from("admins")
+          .select("id, auth_id")
+          .eq("id", uid)
+          .maybeSingle();
+        if (!adminRow) { setChecking(false); return; }
+
+        if (adminRow.auth_id) {
+          // authority_contents から全行（function_id, sub_id）を取得
+          const { data: perms } = await supabase
+            .from("authority_contents")
+            .select("function_id, sub_id")
+            .eq("id", adminRow.auth_id);
+          // { [function_id]: Set<sub_id> } の形に変換
+          const permMap = {};
+          (perms || []).forEach(({ function_id, sub_id }) => {
+            if (!permMap[function_id]) permMap[function_id] = new Set();
+            permMap[function_id].add(sub_id);
+          });
+          onPermissionsLoaded?.(permMap);
+        } else {
+          // auth_id が null = フル権限（古いアカウント）
+          onPermissionsLoaded?.(null);
+        }
+
+        setAllowed(true);
       } else {
         const { data } = await supabase.from("users").select("id").eq("id", uid).maybeSingle();
         setAllowed(!!data);
@@ -166,7 +192,7 @@ const AuthGuard = ({ role, children }) => {
       setChecking(false);
     };
     check();
-  }, [role]);
+  }, [role, onPermissionsLoaded]);
 
   if (checking) return <Loading />;
   if (!allowed) return <Navigate to={role === "admin" ? "/admin-login" : "/stuff-login"} replace />;
@@ -183,6 +209,8 @@ const AppRoutes = () => {
   const appData = useAppData();
   const navigate = useNavigate();
   const location = useLocation();
+  // null = フル権限（auth_id なし）、Set = 閲覧権限のある function_id 集合、undefined = 未ロード
+  const [adminPermissions, setAdminPermissions] = useState(undefined);
 
   const params = new URLSearchParams(location.search);
   const onetimeId = params.get("onetime");
@@ -229,7 +257,7 @@ const AppRoutes = () => {
       <Route
         path="/admin"
         element={
-          <AuthGuard role="admin">
+          <AuthGuard role="admin" onPermissionsLoaded={setAdminPermissions}>
             <AdminDashboard
               onLogout={handleLogout}
               setStaffTemplates={appData.setStaffTemplates}
@@ -241,6 +269,7 @@ const AppRoutes = () => {
               setUsers={appData.setUsers}
               sessions={appData.sessions}
               setSessions={appData.setSessions}
+              adminPermissions={adminPermissions}
               {...commonProps}
             />
           </AuthGuard>
