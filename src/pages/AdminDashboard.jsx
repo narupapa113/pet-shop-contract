@@ -687,6 +687,73 @@ const AdminDashboard = ({
     }
   };
 
+  // --- ダッシュボード集計 ---
+  const [dashStats, setDashStats] = useState(null);
+  const [dashLoading, setDashLoading] = useState(false);
+
+  const fetchDashStats = useCallback(async () => {
+    setDashLoading(true);
+    const [
+      { data: urlRows },
+      { data: historyRows },
+      { data: customerRows },
+      { data: flowRows },
+      { data: templateRows },
+      { data: videoRows },
+      { data: documentRows },
+    ] = await Promise.all([
+      supabaseAdmin.from("onetime_url_manage").select("status, issue_at"),
+      supabaseAdmin.from("sign_history").select("create_at"),
+      supabaseAdmin.from("customers").select("create_at").neq("is_delete", true),
+      supabaseAdmin.from("flow_header").select("id, name, type, create_at"),
+      supabaseAdmin.from("contract_templates_header").select("id, name, create_at"),
+      supabaseAdmin.from("videos").select("id, name, create_at"),
+      supabaseAdmin.from("files").select("id, name, create_at"),
+    ]);
+
+    // 事前受付URL ステータス別件数
+    const urlStatusCount = {};
+    (urlRows || []).forEach(({ status }) => {
+      urlStatusCount[status] = (urlStatusCount[status] || 0) + 1;
+    });
+
+    // 今月の契約数（sign_history.create_at が今月）
+    const now = new Date();
+    const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const contractsThisMonth = (historyRows || []).filter((r) =>
+      r.create_at?.startsWith(thisMonth)
+    ).length;
+
+    // 今月の新規顧客数
+    const newCustomersThisMonth = (customerRows || []).filter((r) =>
+      r.create_at?.startsWith(thisMonth)
+    ).length;
+
+    // 接客フロー タイプ別件数 (type: 1=通常接客, 2=ワンタイム/事前受付)
+    const flowTypeCount = {};
+    (flowRows || []).forEach(({ type }) => {
+      const t = type ?? 1;
+      flowTypeCount[t] = (flowTypeCount[t] || 0) + 1;
+    });
+
+    setDashStats({
+      urlStatusCount,
+      urlTotal: (urlRows || []).length,
+      contractsThisMonth,
+      totalContracts: (historyRows || []).length,
+      newCustomersThisMonth,
+      totalCustomers: (customerRows || []).length,
+      totalFlows: (flowRows || []).length,
+      flowTypeCount,
+      recentFlows: (flowRows || []).slice(-5).reverse(),
+      totalTemplates: (templateRows || []).length,
+      recentTemplates: (templateRows || []).slice(-3).reverse(),
+      totalVideos: (videoRows || []).length,
+      totalDocuments: (documentRows || []).length,
+    });
+    setDashLoading(false);
+  }, []);
+
   // --- 事前受付URL管理 ---
   const onetimeFlows = flows;
   const [selectedFlowForSession, setSelectedFlowForSession] = useState(onetimeFlows[0]?.id ?? "");
@@ -983,9 +1050,10 @@ const deleteCustomer = async (id) => {
 };
 
   useEffect(() => {
+    if (activeTab === "dashboard") fetchDashStats();
     if (activeTab === "customers") fetchCustomers();
     if (activeTab === "remote") { fetchIssuedUrls(); fetchCustomers(); }
-  }, [activeTab, fetchCustomers, fetchIssuedUrls]);
+  }, [activeTab, fetchDashStats, fetchCustomers, fetchIssuedUrls]);
 
   // --- 契約履歴 ---
   const [signHistoryList, setSignHistoryList] = useState([]);
@@ -1114,30 +1182,221 @@ const deleteCustomer = async (id) => {
       <div className="flex-1 overflow-auto p-8 relative">
         {/* ダッシュボード */}
         {activeTab === "dashboard" && showDashboard && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-[500px]">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-blue-800 font-bold">今月の契約数</h3>
-                  <FileText className="text-blue-500" />
+          <div className="space-y-6">
+            {dashLoading || !dashStats ? (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center text-gray-400 text-sm">読み込み中...</div>
+            ) : (
+              <>
+                {/* ── サマリーカード ── */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {[
+                    { label: "今月の契約",   value: dashStats.contractsThisMonth, unit: "件",  sub: `累計 ${dashStats.totalContracts}件`,  icon: <FileText size={16} className="text-blue-400" />,    bg: "bg-blue-50" },
+                    { label: "事前受付URL",  value: dashStats.urlTotal,           unit: "件",  sub: `完了 ${dashStats.urlStatusCount[7] || 0}件`,  icon: <Link size={16} className="text-teal-400" />,        bg: "bg-teal-50" },
+                    { label: "今月の新規顧客", value: dashStats.newCustomersThisMonth, unit: "名", sub: `登録 ${dashStats.totalCustomers}名`, icon: <Users size={16} className="text-violet-400" />,  bg: "bg-violet-50" },
+                    { label: "接客フロー",   value: dashStats.totalFlows,         unit: "件",  sub: null,                                          icon: <List size={16} className="text-orange-400" />,     bg: "bg-orange-50" },
+                    { label: "契約書テンプレート", value: dashStats.totalTemplates, unit: "件", sub: null,                                         icon: <FileText size={16} className="text-green-400" />,  bg: "bg-green-50" },
+                    { label: "コンテンツ",   value: dashStats.totalVideos + dashStats.totalDocuments, unit: "件", sub: `動画 ${dashStats.totalVideos} / 書類 ${dashStats.totalDocuments}`, icon: <Film size={16} className="text-sky-400" />, bg: "bg-sky-50" },
+                  ].map(({ label, value, unit, sub, icon, bg }) => (
+                    <div key={label} className={`${bg} rounded-xl border border-white shadow-sm p-4`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[10px] font-semibold text-gray-500 leading-tight">{label}</p>
+                        {icon}
+                      </div>
+                      <p className="text-2xl font-bold text-gray-800">{value}<span className="text-xs font-normal text-gray-400 ml-0.5">{unit}</span></p>
+                      {sub && <p className="text-[10px] text-gray-400 mt-0.5 truncate">{sub}</p>}
+                    </div>
+                  ))}
                 </div>
-                <p className="text-3xl font-bold text-gray-800">24 <span className="text-sm font-normal text-gray-500">件</span></p>
-              </div>
-              <div className="bg-green-50 p-6 rounded-xl border border-green-100">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-green-800 font-bold">売上高</h3>
-                  <BarChart3 className="text-green-500" />
+
+                {/* ── 2カラム: 事前受付URL棒グラフ ＋ コンテンツ内訳 ── */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* 事前受付URL ステータス別棒グラフ */}
+                  {(() => {
+                    const STATUS_DEF = [
+                      { key: 1, label: "未認証",        bar: "bg-gray-400",   text: "text-gray-600" },
+                      { key: 2, label: "認証済",         bar: "bg-blue-400",   text: "text-blue-700" },
+                      { key: 3, label: "視聴中",         bar: "bg-yellow-400", text: "text-yellow-700" },
+                      { key: 4, label: "情報送信済",     bar: "bg-orange-400", text: "text-orange-700" },
+                      { key: 5, label: "署名済",         bar: "bg-green-400",  text: "text-green-700" },
+                      { key: 6, label: "スタッフ入力済", bar: "bg-teal-400",   text: "text-teal-700" },
+                      { key: 7, label: "完了",           bar: "bg-blue-600",   text: "text-blue-800" },
+                    ];
+                    const maxCount = Math.max(1, ...STATUS_DEF.map((s) => dashStats.urlStatusCount[s.key] || 0));
+                    return (
+                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                        <h3 className="text-sm font-bold text-gray-700 mb-5">事前受付URL — ステータス別件数</h3>
+                        <div className="flex items-end gap-2 h-40">
+                          {STATUS_DEF.map((s) => {
+                            const count = dashStats.urlStatusCount[s.key] || 0;
+                            const pct = Math.round((count / maxCount) * 100);
+                            return (
+                              <div key={s.key} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+                                <span className={`text-xs font-bold ${s.text}`}>{count > 0 ? count : ""}</span>
+                                <div
+                                  className={`w-full rounded-t-md transition-all duration-500 ${s.bar} ${count === 0 ? "opacity-20" : "opacity-90"}`}
+                                  style={{ height: count === 0 ? "4px" : `${Math.max(6, pct)}%` }}
+                                />
+                                <span className="text-[9px] text-gray-500 text-center leading-tight w-full overflow-hidden text-ellipsis whitespace-nowrap">{s.label}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-4 pt-3 border-t border-gray-100">
+                          {STATUS_DEF.map((s) => {
+                            const count = dashStats.urlStatusCount[s.key] || 0;
+                            return (
+                              <div key={s.key} className="flex items-center gap-1">
+                                <span className={`inline-block w-2 h-2 rounded-sm ${s.bar} ${count === 0 ? "opacity-30" : ""}`} />
+                                <span className={`text-[10px] ${count === 0 ? "text-gray-300" : "text-gray-600"}`}>{s.label}</span>
+                                <span className={`text-[10px] font-bold ${count === 0 ? "text-gray-300" : s.text}`}>{count}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* コンテンツ管理 内訳ドーナツ風 + 件数 */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <h3 className="text-sm font-bold text-gray-700 mb-5">コンテンツ管理 — 内訳</h3>
+                    <div className="space-y-3">
+                      {[
+                        { label: "動画コンテンツ",   count: dashStats.totalVideos,     bar: "bg-sky-400",    text: "text-sky-700" },
+                        { label: "書類・PDF",         count: dashStats.totalDocuments,  bar: "bg-indigo-400", text: "text-indigo-700" },
+                        { label: "接客フロー",        count: dashStats.totalFlows,      bar: "bg-orange-400", text: "text-orange-700" },
+                        { label: "契約書テンプレート", count: dashStats.totalTemplates,  bar: "bg-green-400",  text: "text-green-700" },
+                      ].map(({ label, count, bar, text }) => {
+                        const total = dashStats.totalVideos + dashStats.totalDocuments + dashStats.totalFlows + dashStats.totalTemplates;
+                        const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                        return (
+                          <div key={label}>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs text-gray-600">{label}</span>
+                              <span className={`text-xs font-bold ${text}`}>{count}件</span>
+                            </div>
+                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full ${bar} rounded-full transition-all duration-500`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-gray-100 grid grid-cols-2 gap-2">
+                      {dashStats.recentTemplates.map((t) => (
+                        <div key={t.id} className="flex items-center gap-1.5 min-w-0">
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
+                          <span className="text-[10px] text-gray-500 truncate">{t.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-                <p className="text-3xl font-bold text-gray-800">¥4,820,000</p>
-              </div>
-              <div className="bg-sky-50 p-6 rounded-xl border border-sky-100">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sky-800 font-bold">来店予約</h3>
-                  <Calendar className="text-sky-500" />
+
+                {/* ── 事前受付URL 進捗ゲージ ── */}
+                {dashStats.urlTotal > 0 && (() => {
+                  const STATUS_DEF = [
+                    { key: 1, label: "未認証",        color: "bg-gray-300" },
+                    { key: 2, label: "認証済",         color: "bg-blue-300" },
+                    { key: 3, label: "視聴中",         color: "bg-yellow-300" },
+                    { key: 4, label: "情報送信済",     color: "bg-orange-300" },
+                    { key: 5, label: "署名済",         color: "bg-green-300" },
+                    { key: 6, label: "スタッフ入力済", color: "bg-teal-400" },
+                    { key: 7, label: "完了",           color: "bg-blue-600" },
+                  ];
+                  return (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                      <h3 className="text-sm font-bold text-gray-700 mb-4">事前受付URL — 進捗内訳</h3>
+                      <div className="flex rounded-full overflow-hidden h-5 w-full gap-px">
+                        {STATUS_DEF.map((s) => {
+                          const count = dashStats.urlStatusCount[s.key] || 0;
+                          if (count === 0) return null;
+                          const pct = (count / dashStats.urlTotal) * 100;
+                          return (
+                            <div
+                              key={s.key}
+                              title={`${s.label}: ${count}件 (${Math.round(pct)}%)`}
+                              className={`${s.color} transition-all duration-500`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          );
+                        })}
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3">
+                        {STATUS_DEF.map((s) => {
+                          const count = dashStats.urlStatusCount[s.key] || 0;
+                          if (count === 0) return null;
+                          const pct = Math.round((count / dashStats.urlTotal) * 100);
+                          return (
+                            <div key={s.key} className="flex items-center gap-1.5">
+                              <span className={`inline-block w-2.5 h-2.5 rounded-sm ${s.color}`} />
+                              <span className="text-xs text-gray-600">{s.label}</span>
+                              <span className="text-xs font-bold text-gray-700">{count}件</span>
+                              <span className="text-xs text-gray-400">({pct}%)</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* ── 接客フロー 一覧カード ── */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <h3 className="text-sm font-bold text-gray-700 mb-4">接客フロー — 登録一覧</h3>
+                  {dashStats.totalFlows === 0 ? (
+                    <p className="text-xs text-gray-400 py-4 text-center">フローが登録されていません</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {(() => {
+                        const TYPE_DEF = {
+                          1: { label: "通常接客",     dot: "bg-orange-400" },
+                          2: { label: "事前受付",     dot: "bg-teal-400" },
+                        };
+                        return dashStats.recentFlows.map((f) => {
+                          const t = TYPE_DEF[f.type ?? 1] ?? { label: "不明", dot: "bg-gray-300" };
+                          return (
+                            <div key={f.id} className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                              <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${t.dot}`} />
+                              <span className="text-xs text-gray-700 truncate flex-1">{f.name}</span>
+                              <span className="text-[10px] text-gray-400 shrink-0">{t.label}</span>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  )}
+                  {dashStats.totalFlows > 5 && (
+                    <p className="text-[10px] text-gray-400 mt-3 text-right">最新 5 件を表示 / 合計 {dashStats.totalFlows} 件</p>
+                  )}
                 </div>
-                <p className="text-3xl font-bold text-gray-800">8 <span className="text-sm font-normal text-gray-500">組</span></p>
-              </div>
-            </div>
+
+                {/* ── 契約書テンプレート 一覧カード ── */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <h3 className="text-sm font-bold text-gray-700 mb-4">契約書テンプレート — 登録一覧</h3>
+                  {dashStats.totalTemplates === 0 ? (
+                    <p className="text-xs text-gray-400 py-4 text-center">テンプレートが登録されていません</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {dashStats.recentTemplates.map((t) => (
+                        <div key={t.id} className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 border border-green-100 rounded-full">
+                          <FileText size={11} className="text-green-500 shrink-0" />
+                          <span className="text-xs text-gray-700">{t.name}</span>
+                        </div>
+                      ))}
+                      {dashStats.totalTemplates > 3 && (
+                        <div className="flex items-center px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-full">
+                          <span className="text-xs text-gray-400">他 {dashStats.totalTemplates - 3} 件</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
 
