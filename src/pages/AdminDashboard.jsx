@@ -28,6 +28,8 @@ import {
   LayoutDashboard,
   Briefcase,
   Shield,
+  Search,
+  ChevronRight,
 } from "lucide-react";
 import { supabase, supabaseAdmin } from "../lib/supabase";
 import { STEP_TYPES, DEFAULT_TEMPLATES } from "../constants";
@@ -762,6 +764,10 @@ const AdminDashboard = ({
   const [issuedUrlsLoading, setIssuedUrlsLoading] = useState(false);
   const [deleteOnetimeConfirmId, setDeleteOnetimeConfirmId] = useState(null);
   const [copiedUrlMsg, setCopiedUrlMsg] = useState(null); // { url }
+  const [showFlowPickerModal, setShowFlowPickerModal] = useState(false);
+  const [flowPickerSearch, setFlowPickerSearch] = useState("");
+  const [showCustomerPickerModal, setShowCustomerPickerModal] = useState(false);
+  const [customerPickerSearch, setCustomerPickerSearch] = useState("");
 
   const fetchIssuedUrls = useCallback(async () => {
     setIssuedUrlsLoading(true);
@@ -1409,31 +1415,33 @@ const deleteCustomer = async (id) => {
               <div className="flex gap-4 items-end flex-wrap">
                 <div className="flex-1 min-w-48">
                   <label className="block text-sm font-medium text-gray-700 mb-1">使用する接客フロー</label>
-                  <select
-                    className="w-full p-2 border border-gray-300 rounded-lg"
-                    value={selectedFlowForSession}
-                    onChange={(e) => setSelectedFlowForSession(e.target.value)}
+                  <button
+                    type="button"
+                    onClick={() => { setFlowPickerSearch(""); setShowFlowPickerModal(true); }}
+                    className="w-full p-2 border border-gray-300 rounded-lg text-left flex items-center justify-between bg-white hover:bg-gray-50 transition-colors"
                   >
-                    {onetimeFlows.length === 0 && <option value="">ワンタイム用フローがありません</option>}
-                    {onetimeFlows.map((f) => (
-                      <option key={f.id} value={f.id}>{f.name}</option>
-                    ))}
-                  </select>
+                    <span className={selectedFlowForSession ? "text-gray-800" : "text-gray-400"}>
+                      {selectedFlowForSession
+                        ? (onetimeFlows.find((f) => f.id === selectedFlowForSession)?.name ?? "フローを選択")
+                        : (onetimeFlows.length === 0 ? "ワンタイム用フローがありません" : "フローを選択してください")}
+                    </span>
+                    <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />
+                  </button>
                 </div>
                 <div className="flex-1 min-w-48">
                   <label className="block text-sm font-medium text-gray-700 mb-1">顧客選択（任意）</label>
-                  <select
-                    className="w-full p-2 border border-gray-300 rounded-lg"
-                    value={selectedCustomerForUrl}
-                    onChange={(e) => setSelectedCustomerForUrl(e.target.value)}
+                  <button
+                    type="button"
+                    onClick={() => { setCustomerPickerSearch(""); setShowCustomerPickerModal(true); }}
+                    className="w-full p-2 border border-gray-300 rounded-lg text-left flex items-center justify-between bg-white hover:bg-gray-50 transition-colors"
                   >
-                    <option value="">顧客を選択してください</option>
-                    {customers.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}{c.tell ? `（${c.tell}）` : ""}
-                      </option>
-                    ))}
-                  </select>
+                    <span className={selectedCustomerForUrl ? "text-gray-800" : "text-gray-400"}>
+                      {selectedCustomerForUrl
+                        ? (() => { const c = customers.find((c) => c.id === selectedCustomerForUrl); return c ? `${c.name}${c.tell ? `（${c.tell}）` : ""}` : "顧客を選択"; })()
+                        : "顧客を選択してください（任意）"}
+                    </span>
+                    <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />
+                  </button>
                 </div>
                 {can(adminPermissions, 2, 2) && (
                   <button onClick={createOnetimeUrl} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 flex items-center whitespace-nowrap">
@@ -2535,6 +2543,146 @@ const deleteCustomer = async (id) => {
             <p className="text-xs text-gray-500 break-all mb-5 bg-gray-50 p-3 rounded border border-gray-200">{copiedUrlMsg.url}</p>
             <div className="flex justify-end">
               <button onClick={() => setCopiedUrlMsg(null)} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700">閉じる</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 接客フロー選択モーダル */}
+      {showFlowPickerModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowFlowPickerModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
+            <div className="p-5 border-b flex justify-between items-center flex-shrink-0">
+              <h3 className="text-lg font-bold text-gray-800">接客フローを選択</h3>
+              <button onClick={() => setShowFlowPickerModal(false)} className="text-gray-400 hover:text-gray-600"><X size={22} /></button>
+            </div>
+            <div className="p-4 border-b flex-shrink-0">
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="フロー名で検索..."
+                  value={flowPickerSearch}
+                  onChange={(e) => setFlowPickerSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="overflow-y-auto p-4">
+              {onetimeFlows.length === 0 ? (
+                <p className="text-center text-gray-400 py-8">ワンタイム用フローがありません</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {onetimeFlows
+                    .filter((f) => f.name.includes(flowPickerSearch) || (f.description || "").includes(flowPickerSearch))
+                    .map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => { setSelectedFlowForSession(f.id); setShowFlowPickerModal(false); }}
+                        className={`text-left p-4 rounded-xl border-2 transition-all hover:shadow-md ${
+                          selectedFlowForSession === f.id
+                            ? "border-blue-500 bg-blue-50"
+                            : "border-gray-200 bg-white hover:border-blue-300"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-gray-800 truncate">{f.name}</p>
+                            {f.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{f.description}</p>}
+                            <p className="text-xs text-gray-400 mt-2">{f.steps.length} ステップ</p>
+                          </div>
+                          {selectedFlowForSession === f.id && (
+                            <span className="flex-shrink-0 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+                              <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                </div>
+              )}
+              {onetimeFlows.length > 0 && onetimeFlows.filter((f) => f.name.includes(flowPickerSearch) || (f.description || "").includes(flowPickerSearch)).length === 0 && (
+                <p className="text-center text-gray-400 py-8">該当するフローがありません</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 顧客選択モーダル */}
+      {showCustomerPickerModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowCustomerPickerModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
+            <div className="p-5 border-b flex justify-between items-center flex-shrink-0">
+              <h3 className="text-lg font-bold text-gray-800">顧客を選択</h3>
+              <button onClick={() => setShowCustomerPickerModal(false)} className="text-gray-400 hover:text-gray-600"><X size={22} /></button>
+            </div>
+            <div className="p-4 border-b flex-shrink-0">
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="名前・電話番号・メールで検索..."
+                  value={customerPickerSearch}
+                  onChange={(e) => setCustomerPickerSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="overflow-y-auto p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setSelectedCustomerForUrl(""); setShowCustomerPickerModal(false); }}
+                  className={`text-left p-4 rounded-xl border-2 transition-all hover:shadow-md ${
+                    !selectedCustomerForUrl ? "border-blue-500 bg-blue-50" : "border-gray-200 bg-white hover:border-blue-300"
+                  }`}
+                >
+                  <p className="font-semibold text-gray-500 text-sm">選択しない（任意）</p>
+                </button>
+                {customers
+                  .filter((c) => {
+                    const q = customerPickerSearch.toLowerCase();
+                    return !q ||
+                      (c.name || "").toLowerCase().includes(q) ||
+                      (c.tell || "").includes(q) ||
+                      (c.email || "").toLowerCase().includes(q);
+                  })
+                  .map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => { setSelectedCustomerForUrl(c.id); setShowCustomerPickerModal(false); }}
+                      className={`text-left p-4 rounded-xl border-2 transition-all hover:shadow-md ${
+                        selectedCustomerForUrl === c.id
+                          ? "border-blue-500 bg-blue-50"
+                          : "border-gray-200 bg-white hover:border-blue-300"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-gray-800 truncate">{c.name || "（名前なし）"}</p>
+                          {c.tell && <p className="text-xs text-gray-500 mt-1 flex items-center gap-1"><Phone size={11} />{c.tell}</p>}
+                          {c.email && <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1"><Mail size={11} />{c.email}</p>}
+                        </div>
+                        {selectedCustomerForUrl === c.id && (
+                          <span className="flex-shrink-0 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+              </div>
+              {customers.filter((c) => {
+                const q = customerPickerSearch.toLowerCase();
+                return !q || (c.name || "").toLowerCase().includes(q) || (c.tell || "").includes(q) || (c.email || "").toLowerCase().includes(q);
+              }).length === 0 && customerPickerSearch && (
+                <p className="text-center text-gray-400 py-8 col-span-2">該当する顧客がいません</p>
+              )}
             </div>
           </div>
         </div>
