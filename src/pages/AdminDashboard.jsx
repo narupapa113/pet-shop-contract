@@ -2012,14 +2012,15 @@ const deleteCustomer = async (id) => {
                     </div>
                     {contentTab === "video" && (
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">再生時間 (分:秒)</label>
-                        <input type="text" className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500" value={newContentData.duration} onChange={(e) => setNewContentData({ ...newContentData, duration: e.target.value })} placeholder="例: 3:45" />
-                      </div>
-                    )}
-                    {contentTab === "video" && (
-                      <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">説明文</label>
                         <textarea className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 resize-none" rows={3} value={newContentData.description} onChange={(e) => setNewContentData({ ...newContentData, description: e.target.value })} placeholder="動画の内容について説明を入力してください" />
+                      </div>
+                    )}
+                    {contentTab === "video" && newContentData.duration && (
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 flex items-center gap-2">
+                        <Play size={14} className="text-gray-400 flex-shrink-0" />
+                        <span className="text-sm text-gray-500">再生時間：</span>
+                        <span className="text-sm font-semibold text-gray-800">{newContentData.duration}</span>
                       </div>
                     )}
                     {isUploading && uploadProgressPct > 0 && (
