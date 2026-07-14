@@ -1161,7 +1161,7 @@ const deleteCustomer = async (id) => {
         <nav className="flex-1 p-4 overflow-y-auto">
           <p className="text-xs font-bold text-gray-400 mb-2 px-4">メインメニュー</p>
           {showDashboard && <MenuButton id="dashboard" icon={LayoutDashboard} label="ダッシュボード" />}
-          {showRemote    && <MenuButton id="remote" icon={Smartphone} label="事前受付URL発行" />}
+          {showRemote    && <MenuButton id="remote" icon={Smartphone} label="ワンタイムURL発行" />}
           {showHistory   && <MenuButton id="history" icon={History} label="契約履歴" />}
           {showCustomers && <MenuButton id="customers" icon={Users} label="顧客管理" />}
           {showTemplate  && <MenuButton id="template" icon={FileText} label="契約書テンプレート" />}
@@ -1403,7 +1403,7 @@ const deleteCustomer = async (id) => {
         {/* 事前受付URL発行 */}
         {activeTab === "remote" && showRemote && (
           <div className="max-w-6xl mx-auto">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6">事前受付用URLの発行・管理</h2>
+            <h2 className="text-2xl font-bold text-gray-800 mb-6">ワンタイムURLの発行・管理</h2>
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-8">
               <h3 className="font-bold text-lg mb-4">新規URL発行</h3>
               <div className="flex gap-4 items-end flex-wrap">
