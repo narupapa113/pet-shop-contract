@@ -1066,6 +1066,92 @@ const deleteCustomer = async (id) => {
   const [signHistoryLoading, setSignHistoryLoading] = useState(false);
   const [signHistoryDetail, setSignHistoryDetail] = useState(null);
   const [signHistorySearch, setSignHistorySearch] = useState("");
+  const [historyPreviewLoading, setHistoryPreviewLoading] = useState(null); // row id
+  const [historyPreviewData, setHistoryPreviewData] = useState(null); // ContractPreviewStep props
+
+  const openHistoryPreview = async (h) => {
+    setHistoryPreviewLoading(h.id);
+    try {
+      // sign_input (スタッフ入力値)
+      const { data: inputs } = await supabaseAdmin
+        .from("sign_input")
+        .select("sign_item_no, sign_item_value")
+        .eq("id", h.id)
+        .order("sign_item_no", { ascending: true });
+
+      // flow_header (テンプレートID + 添付ファイルID一覧)
+      const { data: flowRow } = await supabaseAdmin
+        .from("flow_header")
+        .select("contract_template_id, files, name")
+        .eq("id", h.contract_id)
+        .maybeSingle();
+
+      // テンプレート項目 (フィールドラベル)
+      let templateItems = [];
+      let templateName = flowRow?.name || h.contract_name || "";
+      if (flowRow?.contract_template_id) {
+        const { data: items } = await supabaseAdmin
+          .from("contract_templates_item")
+          .select("item_no, item_name")
+          .eq("id", flowRow.contract_template_id)
+          .order("item_no", { ascending: true });
+        templateItems = items || [];
+
+        const { data: tmplHeader } = await supabaseAdmin
+          .from("contract_templates_header")
+          .select("name")
+          .eq("id", flowRow.contract_template_id)
+          .maybeSingle();
+        if (tmplHeader?.name) templateName = tmplHeader.name;
+      }
+
+      // staffFields: テンプレート項目とsign_inputを対応付け
+      const staffFields = templateItems.map((item) => {
+        const input = (inputs || []).find((i) => i.sign_item_no === item.item_no);
+        return { id: `item_${item.item_no}`, label: item.item_name, value: input?.sign_item_value || "" };
+      });
+
+      // 顧客データ
+      let customerData = { name: "", nameKana: "", address: "", phone: "", email: "" };
+      if (h.sign_customer_id) {
+        const { data: cust } = await supabaseAdmin
+          .from("customers")
+          .select("*")
+          .eq("id", h.sign_customer_id)
+          .maybeSingle();
+        if (cust) {
+          customerData = {
+            name: cust.name || "",
+            nameKana: cust.name_kana || "",
+            address: cust.address || "",
+            phone: cust.tell || "",
+            email: cust.mail || "",
+          };
+        }
+      }
+
+      // 署名画像 (Storage signed URL)
+      let signatureImage = null;
+      if (h.sign_path) {
+        const { data: urlData } = await supabaseAdmin.storage
+          .from("signatures")
+          .createSignedUrl(h.sign_path, 3600);
+        signatureImage = urlData?.signedUrl || null;
+      }
+
+      setHistoryPreviewData({
+        customerData,
+        staffFields,
+        signatureImage,
+        templateName,
+        attachmentIds: flowRow?.files || [],
+      });
+    } catch (e) {
+      alert(`データの読み込みに失敗しました: ${e.message}`);
+    } finally {
+      setHistoryPreviewLoading(null);
+    }
+  };
 
   const fetchSignHistory = useCallback(async () => {
     setSignHistoryLoading(true);
@@ -2274,12 +2360,21 @@ const deleteCustomer = async (id) => {
                             {h.create_at ? new Date(h.create_at).toLocaleString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"}
                           </td>
                           <td className="px-5 py-3 text-right">
-                            <button
-                              onClick={() => openSignHistoryDetail(h)}
-                              className="text-blue-600 hover:text-blue-800 text-xs font-bold px-3 py-1 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors"
-                            >
-                              詳細
-                            </button>
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => openHistoryPreview(h)}
+                                disabled={historyPreviewLoading === h.id}
+                                className="text-green-600 hover:text-green-800 text-xs font-bold px-3 py-1 border border-green-200 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50"
+                              >
+                                {historyPreviewLoading === h.id ? "読込中..." : "PDF出力"}
+                              </button>
+                              <button
+                                onClick={() => openSignHistoryDetail(h)}
+                                className="text-blue-600 hover:text-blue-800 text-xs font-bold px-3 py-1 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors"
+                              >
+                                詳細
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -2512,6 +2607,34 @@ const deleteCustomer = async (id) => {
                 閉じる
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 契約履歴 PDF プレビューモーダル */}
+      {historyPreviewData && (
+        <div className="fixed inset-0 bg-black/70 flex items-start justify-center z-50 overflow-y-auto py-8 px-4">
+          <div className="w-full max-w-4xl relative">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-white font-bold text-lg">契約書プレビュー</h2>
+              <button
+                onClick={() => setHistoryPreviewData(null)}
+                className="text-white/70 hover:text-white bg-black/30 hover:bg-black/50 rounded-lg px-4 py-2 text-sm font-medium transition-colors flex items-center gap-1"
+              >
+                <X size={16} /> 閉じる
+              </button>
+            </div>
+            <ContractPreviewStep
+              customerData={historyPreviewData.customerData}
+              staffFields={historyPreviewData.staffFields}
+              signatureImage={historyPreviewData.signatureImage}
+              onPrev={() => setHistoryPreviewData(null)}
+              companyInfo={companyInfo}
+              templateName={historyPreviewData.templateName}
+              documentsList={documentsList}
+              attachmentIds={historyPreviewData.attachmentIds}
+              isRemote={false}
+            />
           </div>
         </div>
       )}
