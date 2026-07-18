@@ -276,13 +276,13 @@ const UserManagement = ({ adminPermissions }) => {
   return (
     <div>
       <div className="flex justify-between items-center mb-6 border-b pb-4">
-        <h3 className="text-lg font-bold text-gray-800">ユーザー管理</h3>
+        <h3 className="text-lg font-bold text-gray-800">アカウント管理</h3>
         {can(adminPermissions, 10, 2) && (
           <button
             onClick={openModal}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-sm shadow-md transition-colors"
           >
-            <Plus size={16} /> 新規ユーザー発行
+            <Plus size={16} /> 新規アカウント発行
           </button>
         )}
       </div>
