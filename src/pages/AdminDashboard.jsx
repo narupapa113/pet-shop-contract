@@ -1006,6 +1006,7 @@ const AdminDashboard = ({
     const requiredSub = customerModal?.mode === "add" ? 2 : 3;
     if (!can(adminPermissions, 4, requiredSub)) return;
     if (!customerModal?.data?.name) return alert("名前を入力してください");
+    if (!customerModal?.data?.tell) return alert("電話番号を入力してください");
     const d = customerModal.data;
     const remarksPayload = {
       remarks: d.remarks1 || null,
@@ -2825,7 +2826,7 @@ const deleteCustomer = async (id) => {
                 { key: "name", label: "名前", required: true, placeholder: "例：山田 太郎" },
                 { key: "name_kana", label: "フリガナ", placeholder: "例：ヤマダ タロウ" },
                 { key: "address", label: "住所", placeholder: "例：東京都渋谷区XX-XX" },
-                { key: "tell", label: "電話番号", placeholder: "例：03-1234-5678" },
+                { key: "tell", label: "電話番号", required: true, placeholder: "例：03-1234-5678" },
                 { key: "mail", label: "メールアドレス", placeholder: "例：example@mail.com" },
               ].map(({ key, label, required, placeholder }) => (
                 <div key={key}>
