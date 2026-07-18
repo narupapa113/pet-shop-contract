@@ -30,6 +30,8 @@ import {
   Shield,
   Search,
   ChevronRight,
+  ChevronDown,
+  RotateCcw,
 } from "lucide-react";
 import { supabase, supabaseAdmin } from "../lib/supabase";
 import { STEP_TYPES, DEFAULT_TEMPLATES } from "../constants";
@@ -1158,7 +1160,7 @@ const deleteCustomer = async (id) => {
     setSignHistoryLoading(true);
     const { data } = await supabaseAdmin
       .from("sign_history")
-      .select("*, customers(name, name_kana), users(name)")
+      .select("*, customers(name, name_kana, is_delete), users(name)")
       .order("create_at", { ascending: false });
     setSignHistoryList(data || []);
     setSignHistoryLoading(false);
@@ -1204,7 +1206,37 @@ const deleteCustomer = async (id) => {
     return "company";
   };
   const [settingsTab, setSettingsTab] = useState(initialSettingsTab);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [tempCompanyInfo, setTempCompanyInfo] = useState(companyInfo);
+  const [deletedCustomers, setDeletedCustomers] = useState([]);
+  const [deletedCustomersLoading, setDeletedCustomersLoading] = useState(false);
+
+  const fetchDeletedCustomers = async () => {
+    setDeletedCustomersLoading(true);
+    const { data, error } = await supabase
+      .from("customers")
+      .select("id, name, name_kana, tell, mail, create_at")
+      .eq("is_delete", true)
+      .order("create_at", { ascending: false });
+    if (!error) setDeletedCustomers(data || []);
+    setDeletedCustomersLoading(false);
+  };
+
+  const restoreCustomer = async (customerId) => {
+    const { error } = await supabase
+      .from("customers")
+      .update({ is_delete: false })
+      .eq("id", customerId);
+    if (!error) {
+      setDeletedCustomers((prev) => prev.filter((c) => c.id !== customerId));
+    }
+  };
+
+  useEffect(() => {
+    if (settingsTab === "other") {
+      fetchDeletedCustomers();
+    }
+  }, [settingsTab]);
 
   const handleSaveCompany = () => {
     if (!can(adminPermissions, 9, 3)) return;
@@ -1262,7 +1294,64 @@ const deleteCustomer = async (id) => {
           {showFlow      && <MenuButton id="flow" icon={List} label="接客フロー作成" />}
           <div className="my-4 border-t border-gray-100"></div>
           <p className="text-xs font-bold text-gray-400 mb-2 px-4">システム</p>
-          {showSettings  && <MenuButton id="settings" icon={Settings} label="設定" />}
+          {showSettings && (
+            <div>
+              <button
+                onClick={() => {
+                  setSettingsOpen((prev) => !prev);
+                  if (!settingsOpen) {
+                    setActiveTab("settings");
+                  }
+                }}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-lg mb-1 transition-colors ${activeTab === "settings" ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-100"}`}
+              >
+                <div className="flex items-center space-x-3">
+                  <Settings size={20} />
+                  <span className="text-sm font-medium">設定</span>
+                </div>
+                <ChevronDown
+                  size={16}
+                  className={`transition-transform duration-200 ${settingsOpen ? "rotate-180" : ""}`}
+                />
+              </button>
+              {settingsOpen && (
+                <div className="ml-4 mb-1 space-y-0.5">
+                  {can(adminPermissions, 9, 1) && (
+                    <button
+                      onClick={() => { setActiveTab("settings"); setSettingsTab("company"); }}
+                      className={`w-full text-left flex items-center px-4 py-2.5 rounded-lg text-sm transition-colors ${activeTab === "settings" && settingsTab === "company" ? "bg-blue-50 text-blue-700 font-semibold" : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"}`}
+                    >
+                      会社情報
+                    </button>
+                  )}
+                  {can(adminPermissions, 10, 1) && (
+                    <button
+                      onClick={() => { setActiveTab("settings"); setSettingsTab("users"); }}
+                      className={`w-full text-left flex items-center px-4 py-2.5 rounded-lg text-sm transition-colors ${activeTab === "settings" && settingsTab === "users" ? "bg-blue-50 text-blue-700 font-semibold" : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"}`}
+                    >
+                      アカウント管理
+                    </button>
+                  )}
+                  {can(adminPermissions, 12, 1) && (
+                    <button
+                      onClick={() => { setActiveTab("settings"); setSettingsTab("roles"); }}
+                      className={`w-full text-left flex items-center px-4 py-2.5 rounded-lg text-sm transition-colors ${activeTab === "settings" && settingsTab === "roles" ? "bg-blue-50 text-blue-700 font-semibold" : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"}`}
+                    >
+                      権限管理
+                    </button>
+                  )}
+                  {can(adminPermissions, 11, 1) && (
+                    <button
+                      onClick={() => { setActiveTab("settings"); setSettingsTab("other"); }}
+                      className={`w-full text-left flex items-center px-4 py-2.5 rounded-lg text-sm transition-colors ${activeTab === "settings" && settingsTab === "other" ? "bg-blue-50 text-blue-700 font-semibold" : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"}`}
+                    >
+                      その他
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </nav>
         <div className="p-4 border-t bg-gray-50">
           <button onClick={onLogout} className="flex items-center text-red-600 hover:text-red-700 font-medium px-4 py-2 w-full">
@@ -1919,7 +2008,7 @@ const deleteCustomer = async (id) => {
                       </div>
                       <div className="p-4">
                         <h3 className="font-bold text-gray-800 mb-1 truncate">{video.title}</h3>
-                        <p className="text-sm text-gray-500 mb-2 h-10 overflow-hidden line-clamp-2">{video.description || "説明なし"}</p>
+                        <p className="text-sm text-gray-500 mb-2 h-10 overflow-hidden line-clamp-2 whitespace-pre-wrap">{video.description || "説明なし"}</p>
                         {video.createdAt && <p className="text-xs text-gray-400 mb-3">登録日時: {video.createdAt}</p>}
                         <div className="flex justify-between items-center border-t pt-3">
                           {can(adminPermissions, 6, 3) ? (
@@ -2074,7 +2163,7 @@ const deleteCustomer = async (id) => {
                   <div className="flex justify-between items-center px-4 py-3 bg-gray-900">
                     <div>
                       <p className="text-white font-bold">{playingVideo.title}</p>
-                      {playingVideo.description && <p className="text-gray-400 text-sm">{playingVideo.description}</p>}
+                      {playingVideo.description && <p className="text-gray-400 text-sm whitespace-pre-wrap">{playingVideo.description}</p>}
                     </div>
                     <button onClick={() => setPlayingVideo(null)} className="text-gray-400 hover:text-white"><X size={24} /></button>
                   </div>
@@ -2354,8 +2443,13 @@ const deleteCustomer = async (id) => {
                         <tr key={h.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-5 py-3 font-medium text-gray-800">{h.contract_name || "—"}</td>
                           <td className="px-5 py-3 text-gray-700">
-                            {h.customers?.name || "—"}
-                            {h.customers?.name_kana && <span className="text-xs text-gray-400 ml-1">({h.customers.name_kana})</span>}
+                            <span className="inline-flex items-center gap-1.5">
+                              {h.customers?.name || "—"}
+                              {h.customers?.name_kana && <span className="text-xs text-gray-400">({h.customers.name_kana})</span>}
+                              {h.customers?.is_delete && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-600 border border-red-200">削除済</span>
+                              )}
+                            </span>
                           </td>
                           <td className="px-5 py-3 text-gray-500">{h.users?.name || "—"}</td>
                           <td className="px-5 py-3 text-gray-500 whitespace-nowrap">
@@ -2489,31 +2583,8 @@ const deleteCustomer = async (id) => {
 
         {/* 設定 */}
         {activeTab === "settings" && showSettings && (
-          <div className="max-w-6xl mx-auto">
-            <div className="flex flex-col md:flex-row gap-6">
-              <div className="w-full md:w-64 bg-white rounded-xl shadow-sm border border-gray-200 p-2 h-fit">
-                {can(adminPermissions, 9, 1) && (
-                  <button onClick={() => setSettingsTab("company")} className={`w-full text-left px-4 py-3 rounded-lg mb-1 flex items-center ${settingsTab === "company" ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-600 hover:bg-gray-50"}`}>
-                    <Briefcase size={18} className="mr-3" /> 会社情報
-                  </button>
-                )}
-                {can(adminPermissions, 10, 1) && (
-                  <button onClick={() => setSettingsTab("users")} className={`w-full text-left px-4 py-3 rounded-lg mb-1 flex items-center ${settingsTab === "users" ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-600 hover:bg-gray-50"}`}>
-                    <Users size={18} className="mr-3" /> ユーザー管理
-                  </button>
-                )}
-                {can(adminPermissions, 12, 1) && (
-                  <button onClick={() => setSettingsTab("roles")} className={`w-full text-left px-4 py-3 rounded-lg mb-1 flex items-center ${settingsTab === "roles" ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-600 hover:bg-gray-50"}`}>
-                    <Shield size={18} className="mr-3" /> 権限管理
-                  </button>
-                )}
-                {can(adminPermissions, 11, 1) && (
-                  <button onClick={() => setSettingsTab("other")} className={`w-full text-left px-4 py-3 rounded-lg mb-1 flex items-center ${settingsTab === "other" ? "bg-blue-50 text-blue-700 font-bold" : "text-gray-600 hover:bg-gray-50"}`}>
-                    <Settings size={18} className="mr-3" /> その他
-                  </button>
-                )}
-              </div>
-              <div className="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 p-8 min-h-[500px]">
+          <div className="max-w-4xl mx-auto">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 min-h-[500px]">
                 {settingsTab === "company" && (
                   <div>
                     <h3 className="text-lg font-bold text-gray-800 mb-6 border-b pb-4">会社基本情報</h3>
@@ -2540,7 +2611,58 @@ const deleteCustomer = async (id) => {
                 )}
                 {settingsTab === "roles" && <RoleManagement adminPermissions={adminPermissions} />}
                 {settingsTab === "users" && <UserManagement adminPermissions={adminPermissions} />}
-              </div>
+                {settingsTab === "other" && (
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-800 mb-6 border-b pb-4">削除済み顧客一覧</h3>
+                    {deletedCustomersLoading ? (
+                      <div className="flex items-center justify-center py-16 text-gray-400">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mr-3"></div>
+                        読み込み中...
+                      </div>
+                    ) : deletedCustomers.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+                        <RotateCcw size={40} className="mb-3 opacity-30" />
+                        <p className="text-sm">削除済みの顧客はいません</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-200">
+                              <th className="text-left px-4 py-3 font-semibold text-gray-600">氏名</th>
+                              <th className="text-left px-4 py-3 font-semibold text-gray-600">フリガナ</th>
+                              <th className="text-left px-4 py-3 font-semibold text-gray-600">電話番号</th>
+                              <th className="text-left px-4 py-3 font-semibold text-gray-600">メールアドレス</th>
+                              <th className="text-left px-4 py-3 font-semibold text-gray-600">登録日</th>
+                              <th className="px-4 py-3"></th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {deletedCustomers.map((c) => (
+                              <tr key={c.id} className="hover:bg-gray-50 transition-colors">
+                                <td className="px-4 py-3 font-medium text-gray-800">{c.name || "—"}</td>
+                                <td className="px-4 py-3 text-gray-500">{c.name_kana || "—"}</td>
+                                <td className="px-4 py-3 text-gray-500">{c.phone || "—"}</td>
+                                <td className="px-4 py-3 text-gray-500">{c.email || "—"}</td>
+                                <td className="px-4 py-3 text-gray-400 text-xs">
+                                  {c.created_at ? new Date(c.created_at).toLocaleDateString("ja-JP") : "—"}
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  <button
+                                    onClick={() => restoreCustomer(c.id)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-semibold hover:bg-green-100 transition-colors"
+                                  >
+                                    <RotateCcw size={13} /> 復活
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
             </div>
           </div>
         )}
