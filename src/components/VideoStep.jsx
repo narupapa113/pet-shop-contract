@@ -19,6 +19,7 @@ const VideoStep = ({
   stepConfig,
   completedVideoIds,
   onVideoComplete,
+  onWatchProgress,
 }) => {
   const targetVideoIds = stepConfig.videoIds || [];
   const activePlaylist =
@@ -38,6 +39,8 @@ const VideoStep = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showPauseIcon, setShowPauseIcon] = useState(false);
   const pauseIconTimeoutRef = useRef(null);
+  const lastReportSecRef = useRef(0);
+  const REPORT_INTERVAL_SEC = 5;
 
   const currentVideo = activePlaylist[currentVideoIndex] || {};
   const isAllCompleted = activePlaylist.every((v) => completedVideoIds.includes(v.id));
@@ -133,6 +136,11 @@ const VideoStep = ({
       v._midPaused = true;
       v.pause();
       setMidPauseShown(true);
+    }
+
+    if (onWatchProgress && v._watchedSec - lastReportSecRef.current >= REPORT_INTERVAL_SEC) {
+      lastReportSecRef.current = v._watchedSec;
+      onWatchProgress({ videoId: currentVideo.id, watchedSec: Math.floor(v._watchedSec), requiredSec: parseDurationSec(currentVideo.duration) });
     }
   };
 
