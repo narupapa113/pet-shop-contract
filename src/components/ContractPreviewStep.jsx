@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { PDFDocument } from "pdf-lib";
+import A4ScaledPreview from "./A4ScaledPreview";
 
 async function downloadFromStorage(path) {
   const result = await supabase.storage.from("files").download(path);
@@ -66,27 +67,33 @@ const DocPageImages = ({ doc }) => {
 
   if (!loaded) {
     return (
-      <div className="bg-white shadow-2xl w-[210mm] min-h-[297mm] mx-auto mb-8 flex items-center justify-center">
-        <p className="text-sm text-gray-400">読み込み中...</p>
-      </div>
+      <A4ScaledPreview>
+        <div className="bg-white shadow-2xl w-[210mm] min-h-[297mm] mx-auto mb-8 flex items-center justify-center">
+          <p className="text-sm text-gray-400">読み込み中...</p>
+        </div>
+      </A4ScaledPreview>
     );
   }
 
   if (pageUrls.length === 0) {
     return (
-      <div className="bg-white shadow-2xl w-[210mm] min-h-[100px] mx-auto mb-8 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 p-8">
-        <FileText size={40} className="text-gray-300 mb-2" />
-        <p className="text-gray-500 text-sm">{doc.title}</p>
-      </div>
+      <A4ScaledPreview>
+        <div className="bg-white shadow-2xl w-[210mm] min-h-[100px] mx-auto mb-8 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 p-8">
+          <FileText size={40} className="text-gray-300 mb-2" />
+          <p className="text-gray-500 text-sm">{doc.title}</p>
+        </div>
+      </A4ScaledPreview>
     );
   }
 
   return (
     <>
       {pageUrls.map((url, i) => (
-        <div key={i} className="bg-white shadow-2xl w-[210mm] mx-auto mb-4 overflow-hidden">
-          <img src={url} alt={`${doc.title} ${i + 1}ページ`} className="w-full block" />
-        </div>
+        <A4ScaledPreview key={i}>
+          <div className="bg-white shadow-2xl w-[210mm] mx-auto mb-4 overflow-hidden">
+            <img src={url} alt={`${doc.title} ${i + 1}ページ`} className="w-full block" />
+          </div>
+        </A4ScaledPreview>
       ))}
     </>
   );
@@ -193,9 +200,15 @@ const ContractPreviewStep = ({
 
       // window.open はiPad Safariでブロックされやすいため、aタグでダウンロード保存する
       const safeName = (customerData?.name || "顧客").replace(/[\\/:*?"<>|]/g, "");
+      const safeTemplate = (templateName || "契約書").replace(/[\\/:*?"<>|]/g, "");
+      const storeName = (companyInfo?.name && companyInfo.name.trim())
+        ? companyInfo.name.trim().replace(/[\\/:*?"<>|]/g, "")
+        : "店舗未設定";
+      const now = new Date();
+      const yyyymmdd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
       const a = document.createElement("a");
       a.href = url;
-      a.download = `契約書_${safeName}_${currentDate}.pdf`;
+      a.download = `${yyyymmdd}_${safeTemplate}_${safeName}様_${storeName}.pdf`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -241,6 +254,7 @@ const ContractPreviewStep = ({
         </div>
       </div>
 
+      <A4ScaledPreview>
       <div
         id="contract-preview"
         className="bg-white p-12 shadow-2xl w-[210mm] min-h-[297mm] text-gray-900 leading-relaxed mx-auto print:shadow-none print:w-full print:m-0 print:p-0"
@@ -342,10 +356,11 @@ const ContractPreviewStep = ({
           <p>TEL: {companyInfo?.phone || "03-XXXX-XXXX"}</p>
         </div>
       </div>
+      </A4ScaledPreview>
 
       {/* 添付資料プレビュー（選択順で表示） */}
       {attachedDocuments.length > 0 && (
-        <div className="mt-8 w-full max-w-4xl print:hidden">
+        <div className="mt-8 w-full print:hidden">
           <p className="text-center text-gray-500 mb-4 text-sm">
             --- 添付資料プレビュー（PDF保存ボタンで契約書と結合されます） ---
           </p>

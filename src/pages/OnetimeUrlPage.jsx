@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Smartphone, ShieldCheck, Loader } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { supabase, supabaseAdmin } from "../lib/supabase";
+import { findCustomerByPhone } from "../lib/customer";
 import ProgressBar from "../components/ProgressBar";
 import VideoStep from "../components/VideoStep";
 import CustomerFormStep from "../components/CustomerFormStep";
@@ -267,6 +268,35 @@ const OnetimeUrlPage = ({ onetimeId, videoPlaylist, staffTemplates, documentsLis
           .from("onetime_url_manage")
           .update({ customer_id: data.id, update_at: new Date().toISOString() })
           .eq("id", onetimeId);
+
+        // 電話番号重複チェック → status 決定
+        let finalStatus = 4;
+        const phone = customerData.phone?.trim() || null;
+        if (phone) {
+          try {
+            const existing = await findCustomerByPhone(supabase, phone);
+            if (existing) finalStatus = 2;
+          } catch (e) {
+            console.error("電話番号重複チェックエラー:", e);
+          }
+        }
+
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const contractIdValue = uuidRegex.test(flow.id) ? flow.id : null;
+        if (contractIdValue) {
+          try {
+            await supabaseAdmin.from("sign_history").insert({
+              contract_id: contractIdValue,
+              contract_name: flow.name || null,
+              sign_customer_id: data.id,
+              status: finalStatus,
+              status_updated_at: new Date().toISOString(),
+              onetime_url_id: onetimeId,
+            });
+          } catch (err) {
+            console.error("sign_history 作成エラー:", err);
+          }
+        }
       }
       await updateOnetimeStatus(onetimeId, 4);
       setPhase("done");
@@ -315,6 +345,7 @@ const OnetimeUrlPage = ({ onetimeId, videoPlaylist, staffTemplates, documentsLis
             onNext={nextStep}
             onPrev={prevStep}
             submitLabel="送信する"
+            isRemote={true}
           />
         );
       default:

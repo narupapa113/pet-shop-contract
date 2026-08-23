@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Smartphone } from "lucide-react";
 import { supabase, supabaseAdmin } from "../lib/supabase";
+import { findCustomerByPhone } from "../lib/customer";
 import ProgressBar from "../components/ProgressBar";
 import VideoStep from "../components/VideoStep";
 import CustomerFormStep from "../components/CustomerFormStep";
@@ -38,6 +39,27 @@ const CustomerRemoteMode = ({
     ),
   );
   const [watchedVideoIds, setWatchedVideoIds] = useState([]);
+  const [signHistoryId, setSignHistoryId] = useState(null);
+
+  useEffect(() => {
+    if (!remoteSession) return;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const contractIdValue = uuidRegex.test(flow.id) ? flow.id : null;
+    if (!contractIdValue) return;
+    supabaseAdmin
+      .from("sign_history")
+      .insert({
+        contract_id: contractIdValue,
+        contract_name: flow.name || null,
+        status: 1,
+        status_updated_at: new Date().toISOString(),
+        onetime_url_id: remoteSession.id || null,
+      })
+      .select("id")
+      .maybeSingle()
+      .then(({ data }) => { if (data?.id) setSignHistoryId(data.id); })
+      .catch((err) => console.error("sign_history 作成エラー:", err));
+  }, []);
 
   useEffect(() => {
     setWatchedVideoIds([]);
@@ -70,13 +92,26 @@ const CustomerRemoteMode = ({
   // 「送信する」押下時に一括INSERT
   const handleFinish = async () => {
     try {
-      // 1. customers INSERT
+      const phone = customerData.phone?.trim() || null;
+
+      // 1. 電話番号重複チェック → 既存顧客があれば要確認ステータス
+      let isPhoneDuplicate = false;
+      if (phone) {
+        try {
+          const existing = await findCustomerByPhone(supabase, phone);
+          isPhoneDuplicate = !!existing;
+        } catch (e) {
+          console.error("電話番号重複チェックエラー:", e);
+        }
+      }
+
+      // 2. customers INSERT
       const { data: custData } = await supabase
         .from("customers")
         .insert({
           name: customerData.name,
           name_kana: customerData.nameKana || null,
-          tell: customerData.phone || null,
+          tell: phone,
           mail: customerData.email || null,
           address: customerData.address || null,
         })
@@ -84,7 +119,7 @@ const CustomerRemoteMode = ({
         .maybeSingle();
       const newCustomerId = custData?.id ?? null;
 
-      // 2. 署名画像を Storage にアップロード → sign_history INSERT
+      // 3. 署名画像を Storage にアップロード → sign_history を完了状態に UPDATE
       if (signatureImage) {
         const blob = await (await fetch(signatureImage)).blob();
         const filePath = `signatures/${Date.now()}.png`;
@@ -92,16 +127,30 @@ const CustomerRemoteMode = ({
           .from("signatures")
           .upload(filePath, blob, { contentType: "image/png" });
         if (!uploadError) {
-          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-          const contractIdValue = uuidRegex.test(flow.id) ? flow.id : null;
-          if (contractIdValue) {
-            const { error: historyError } = await supabaseAdmin.from("sign_history").insert({
-              contract_id: contractIdValue,
-              contract_name: flow.name || null,
+          const finalStatus = isPhoneDuplicate ? 2 : 3;
+          const nowIso = new Date().toISOString();
+          if (signHistoryId) {
+            await supabaseAdmin.from("sign_history").update({
               sign_customer_id: newCustomerId,
               sign_path: filePath,
-            });
-            if (historyError) console.error("sign_history 挿入エラー:", historyError);
+              status: finalStatus,
+              status_updated_at: nowIso,
+            }).eq("id", signHistoryId);
+          } else {
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const contractIdValue = uuidRegex.test(flow.id) ? flow.id : null;
+            if (contractIdValue) {
+              const { error: historyError } = await supabaseAdmin.from("sign_history").insert({
+                contract_id: contractIdValue,
+                contract_name: flow.name || null,
+                sign_customer_id: newCustomerId,
+                sign_path: filePath,
+                status: finalStatus,
+                status_updated_at: nowIso,
+                onetime_url_id: remoteSession.id || null,
+              });
+              if (historyError) console.error("sign_history 挿入エラー:", historyError);
+            }
           }
         }
       }
@@ -133,6 +182,7 @@ const CustomerRemoteMode = ({
             onChange={handleCustomerChange}
             onNext={nextStep}
             onPrev={prevStep}
+            isRemote={true}
           />
         );
       case "SIGNATURE":

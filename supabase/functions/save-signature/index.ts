@@ -17,7 +17,7 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { completionToken, signatureDataUrl, contractId, contractName, customerId, videoIds } =
+    const { completionToken, signatureDataUrl, contractId, contractName, customerId, videoIds, status, signHistoryId } =
       await req.json();
 
     if (!completionToken || !signatureDataUrl) {
@@ -59,19 +59,41 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { error: historyError } = await supabase.from("sign_history").insert({
-      contract_id: contractId ?? null,
-      contract_name: contractName ?? null,
-      sign_customer_id: customerId ?? null,
-      sign_path: filePath,
-      video_id: Array.isArray(videoIds) ? videoIds : [],
-    });
+    const nowIso = new Date().toISOString();
+    const finalStatus = status ?? 3;
 
-    if (historyError) {
-      return new Response(
-        JSON.stringify({ error: historyError.message }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    if (signHistoryId) {
+      const { error: updateError } = await supabase.from("sign_history").update({
+        sign_customer_id: customerId ?? null,
+        sign_path: filePath,
+        video_id: Array.isArray(videoIds) ? videoIds : [],
+        status: finalStatus,
+        status_updated_at: nowIso,
+      }).eq("id", signHistoryId);
+
+      if (updateError) {
+        return new Response(
+          JSON.stringify({ error: updateError.message }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    } else {
+      const { error: historyError } = await supabase.from("sign_history").insert({
+        contract_id: contractId ?? null,
+        contract_name: contractName ?? null,
+        sign_customer_id: customerId ?? null,
+        sign_path: filePath,
+        video_id: Array.isArray(videoIds) ? videoIds : [],
+        status: finalStatus,
+        status_updated_at: nowIso,
+      });
+
+      if (historyError) {
+        return new Response(
+          JSON.stringify({ error: historyError.message }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     return new Response(

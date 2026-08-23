@@ -5,6 +5,7 @@ const REMARKS_LABELS = ["備考1", "備考2", "備考3"];
 
 const StaffInputStep = ({ fields, templateName, onFieldChange, onAdd, onRemove, onUpdateLabel, onNext, onPrev, remarksArr, onRemarksChange }) => {
   const [isEditingFields, setIsEditingFields] = useState(false);
+  const [requiredErrors, setRequiredErrors] = useState({});
   const arr = Array.isArray(remarksArr) ? remarksArr : ["", "", ""];
 
   return (
@@ -54,7 +55,7 @@ const StaffInputStep = ({ fields, templateName, onFieldChange, onAdd, onRemove, 
                     className="text-sm font-bold text-blue-700 bg-white border border-blue-300 rounded px-2 py-1 w-full mr-2"
                   />
                 ) : (
-                  <label className="block text-sm font-bold text-gray-700">{field.label}</label>
+                  <label className="block text-sm font-bold text-gray-700">{field.label}{field.isRequired && <span className="text-red-500 ml-1">*</span>}</label>
                 )}
                 {isEditingFields && (
                   <button onClick={() => onRemove(field.id)} className="text-red-500 p-1 flex-shrink-0">
@@ -63,24 +64,30 @@ const StaffInputStep = ({ fields, templateName, onFieldChange, onAdd, onRemove, 
                 )}
               </div>
               {field.type === "select" ? (
+                <>
                 <select
                   value={field.value}
-                  onChange={(e) => onFieldChange(field.id, e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  onChange={(e) => { onFieldChange(field.id, e.target.value); if (requiredErrors[field.id]) setRequiredErrors((p) => { const n = { ...p }; delete n[field.id]; return n; }); }}
+                  className={`w-full p-3 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 ${requiredErrors[field.id] ? "border-red-400" : "border-gray-300"}`}
                 >
                   <option value="">選択してください</option>
                   {field.options && field.options.map((opt) => (
                     <option key={opt} value={opt}>{opt}</option>
                   ))}
                 </select>
+                {requiredErrors[field.id] && <p className="text-xs text-red-500 mt-1">必須入力の項目です</p>}
+                </>
               ) : (
+                <>
                 <input
                   type={field.type}
                   value={field.value}
-                  onChange={(e) => onFieldChange(field.id, e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  onChange={(e) => { onFieldChange(field.id, e.target.value); if (requiredErrors[field.id]) setRequiredErrors((p) => { const n = { ...p }; delete n[field.id]; return n; }); }}
+                  className={`w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 ${requiredErrors[field.id] ? "border-red-400" : "border-gray-300"}`}
                   placeholder={field.placeholder || ""}
                 />
+                {requiredErrors[field.id] && <p className="text-xs text-red-500 mt-1">必須入力の項目です</p>}
+                </>
               )}
             </div>
           ))}
@@ -117,7 +124,17 @@ const StaffInputStep = ({ fields, templateName, onFieldChange, onAdd, onRemove, 
           戻る
         </button>
         <button
-          onClick={onNext}
+          onClick={() => {
+            const missing = fields.filter((f) => f.isRequired && !String(f.value ?? "").trim());
+            if (missing.length > 0) {
+              const errs = {};
+              missing.forEach((f) => { errs[f.id] = true; });
+              setRequiredErrors(errs);
+              return;
+            }
+            setRequiredErrors({});
+            onNext();
+          }}
           className="px-8 py-3 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-700 flex items-center shadow-lg transition-colors"
         >
           <FileText size={18} className="mr-2" />

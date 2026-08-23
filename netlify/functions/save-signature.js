@@ -17,7 +17,7 @@ export const handler = async (event) => {
       process.env.SUPABASE_SERVICE_ROLE_KEY,
     );
 
-    const { completionToken, signatureDataUrl, contractId, contractName, customerId } =
+    const { completionToken, signatureDataUrl, contractId, contractName, customerId, videoIds, status, signHistoryId } =
       JSON.parse(event.body);
 
     if (!completionToken || !signatureDataUrl) {
@@ -62,19 +62,43 @@ export const handler = async (event) => {
       };
     }
 
-    const { error: historyError } = await supabase.from("sign_history").insert({
-      contract_id: contractId ?? null,
-      contract_name: contractName ?? null,
-      sign_customer_id: customerId ?? null,
-      sign_path: filePath,
-    });
+    const nowIso = new Date().toISOString();
+    const finalStatus = status ?? 3;
 
-    if (historyError) {
-      return {
-        statusCode: 500,
-        headers: { ...cors, "Content-Type": "application/json" },
-        body: JSON.stringify({ error: historyError.message }),
-      };
+    if (signHistoryId) {
+      const { error: updateError } = await supabase.from("sign_history").update({
+        sign_customer_id: customerId ?? null,
+        sign_path: filePath,
+        video_id: Array.isArray(videoIds) ? videoIds : [],
+        status: finalStatus,
+        status_updated_at: nowIso,
+      }).eq("id", signHistoryId);
+
+      if (updateError) {
+        return {
+          statusCode: 500,
+          headers: { ...cors, "Content-Type": "application/json" },
+          body: JSON.stringify({ error: updateError.message }),
+        };
+      }
+    } else {
+      const { error: historyError } = await supabase.from("sign_history").insert({
+        contract_id: contractId ?? null,
+        contract_name: contractName ?? null,
+        sign_customer_id: customerId ?? null,
+        sign_path: filePath,
+        video_id: Array.isArray(videoIds) ? videoIds : [],
+        status: finalStatus,
+        status_updated_at: nowIso,
+      });
+
+      if (historyError) {
+        return {
+          statusCode: 500,
+          headers: { ...cors, "Content-Type": "application/json" },
+          body: JSON.stringify({ error: historyError.message }),
+        };
+      }
     }
 
     return {

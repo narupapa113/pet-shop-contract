@@ -1,5 +1,7 @@
 import React, { useState } from "react";
-import { ShieldCheck } from "lucide-react";
+import { ShieldCheck, TriangleAlert as AlertTriangle, UserCheck, Search } from "lucide-react";
+import { supabaseAdmin } from "../lib/supabase";
+import { findCustomerByPhone } from "../lib/customer";
 
 const validatePhone = (phone) => {
   if (phone.includes("-")) return "電話番号はハイフン（-）を含めずに入力してください";
@@ -8,10 +10,13 @@ const validatePhone = (phone) => {
   return null;
 };
 
-const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel }) => {
+const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemote }) => {
   const [errors, setErrors] = useState({});
+  // phase: null | "searching" | "duplicate_found" | "handed_to_staff" | "staff_confirm" | "show_existing"
+  const [dupPhase, setDupPhase] = useState(null);
+  const [existingCustomer, setExistingCustomer] = useState(null);
 
-  const handleNext = () => {
+  const handleNext = async () => {
     const newErrors = {};
     if (!data.name.trim()) newErrors.name = "お名前を入力してください";
     if (!data.nameKana.trim()) newErrors.nameKana = "フリガナを入力してください";
@@ -34,12 +39,217 @@ const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel }) => {
       return;
     }
     setErrors({});
+
+    // 電話番号重複チェック
+    setDupPhase("searching");
+    try {
+      const existing = await findCustomerByPhone(supabaseAdmin, data.phone);
+      if (existing) {
+        if (isRemote) {
+          // リモートモード: 重複が見つかってもお客様には一切警告を見せず、そのまま次へ進む
+          // 重複情報は handleFinish で sign_history のステータス(要確認)として記録される
+          setDupPhase(null);
+          onNext({ mode: "new" });
+          return;
+        }
+        setExistingCustomer(existing);
+        setDupPhase("duplicate_found");
+        return;
+      }
+    } catch (e) {
+      console.error("電話番号重複チェックエラー:", e);
+    }
+
+    // 該当なし → 通常通り次へ
+    setDupPhase(null);
     onNext();
+  };
+
+  const handleBackToEdit = () => setDupPhase(null);
+
+  const handleProceedToStaff = () => {
+    if (isRemote) {
+      setDupPhase(null);
+      onNext({ mode: "new" });
+      return;
+    }
+    setDupPhase("handed_to_staff");
+  };
+
+  const handleStaffConfirm = () => setDupPhase("staff_confirm");
+
+  const handleStaffShowExisting = () => setDupPhase("show_existing");
+
+  const handleOverwriteYes = () => {
+    setDupPhase(null);
+    onNext({ mode: "overwrite", existingCustomerId: existingCustomer.id });
+  };
+
+  const handleOverwriteNo = () => {
+    setDupPhase(null);
+    onNext({ mode: "new" });
   };
 
   const fieldClass = (name) =>
     `w-full p-3 border rounded-lg ${errors[name] ? "border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500" : "border-gray-300"}`;
 
+  // --- 電話番号重複モーダル ---
+  if (dupPhase === "duplicate_found") {
+    return (
+      <>
+        <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-md opacity-50 pointer-events-none select-none">
+          <h2 className="text-2xl font-bold mb-6 text-gray-800">お客様情報の入力</h2>
+        </div>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center text-amber-600 mb-4">
+              <AlertTriangle size={28} className="mr-2" />
+              <h3 className="text-lg font-bold">ご確認をお願いします</h3>
+            </div>
+            <p className="text-gray-700 font-semibold mb-2">すでに登録のある電話番号です</p>
+            <p className="text-gray-600 text-sm mb-4">電話番号のご確認をお願いします</p>
+            <div className="bg-gray-50 rounded-lg p-3 mb-6 text-center">
+              <span className="text-xl font-bold tracking-wider text-gray-800">{data.phone}</span>
+            </div>
+            <p className="text-sm text-gray-500 mb-6">
+              電話番号にお間違いがないかご確認ください。<br />
+              {isRemote ? "このまま進むと新規登録として続行します。" : "間違いがない場合は、このままスタッフにお渡しください。"}
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={handleProceedToStaff}
+                className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700"
+              >
+                {isRemote ? "新規登録として進む" : "このまま進む"}
+              </button>
+              <button
+                onClick={handleBackToEdit}
+                className="w-full px-6 py-3 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 font-medium"
+              >
+                戻って修正する
+              </button>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // --- 「スタッフにお渡しください」画面 ---
+  if (dupPhase === "handed_to_staff") {
+    return (
+      <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-md text-center">
+        <div className="py-8">
+          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <UserCheck size={32} className="text-blue-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-3">スタッフにお渡しください</h2>
+          <p className="text-gray-600 mb-8">
+            ご入力いただいた内容をスタッフが確認いたします。<br />
+            端末を店舗スタッフにお渡しください。
+          </p>
+          <button
+            onClick={handleStaffConfirm}
+            className="px-8 py-3 bg-gray-700 text-white rounded-lg font-bold hover:bg-gray-800"
+          >
+            スタッフ用確認ボタン
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- スタッフ確認画面（重複情報を確認する） ---
+  if (dupPhase === "staff_confirm") {
+    return (
+      <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-md text-center">
+        <div className="py-8">
+          <h2 className="text-xl font-bold text-gray-800 mb-4">スタッフ確認</h2>
+          <p className="text-gray-600 mb-8">重複情報を確認してください。</p>
+          <button
+            onClick={handleStaffShowExisting}
+            className="px-8 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700"
+          >
+            重複情報を確認する
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- 既存顧客情報表示モーダル（スタッフ向け） ---
+  if (dupPhase === "show_existing" && existingCustomer) {
+    const c = existingCustomer;
+    return (
+      <>
+        <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-md opacity-50 pointer-events-none select-none">
+          <h2 className="text-2xl font-bold mb-6 text-gray-800">スタッフ確認</h2>
+        </div>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center text-blue-600 mb-4">
+              <Search size={24} className="mr-2" />
+              <h3 className="text-lg font-bold">既存顧客情報</h3>
+            </div>
+            <div className="space-y-2 mb-6">
+              <div className="flex border-b border-gray-100 pb-2">
+                <span className="w-24 text-sm text-gray-500 flex-shrink-0">お名前</span>
+                <span className="text-sm font-medium text-gray-800">{c.name}</span>
+              </div>
+              <div className="flex border-b border-gray-100 pb-2">
+                <span className="w-24 text-sm text-gray-500 flex-shrink-0">フリガナ</span>
+                <span className="text-sm text-gray-800">{c.name_kana || "―"}</span>
+              </div>
+              <div className="flex border-b border-gray-100 pb-2">
+                <span className="w-24 text-sm text-gray-500 flex-shrink-0">電話番号</span>
+                <span className="text-sm text-gray-800">{c.tell || "―"}</span>
+              </div>
+              <div className="flex border-b border-gray-100 pb-2">
+                <span className="w-24 text-sm text-gray-500 flex-shrink-0">メール</span>
+                <span className="text-sm text-gray-800">{c.mail || "―"}</span>
+              </div>
+              <div className="flex border-b border-gray-100 pb-2">
+                <span className="w-24 text-sm text-gray-500 flex-shrink-0">ご住所</span>
+                <span className="text-sm text-gray-800">{c.address || "―"}</span>
+              </div>
+            </div>
+            <p className="text-sm font-semibold text-gray-700 mb-4 text-center">
+              入力された内容で上書きしてもよろしいですか？<br />
+              <span className="text-xs text-gray-500 font-normal">未入力の項目は既存の値が保持されます</span>
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleOverwriteNo}
+                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 font-medium"
+              >
+                いいえ（新規登録）
+              </button>
+              <button
+                onClick={handleOverwriteYes}
+                className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700"
+              >
+                はい（上書き）
+              </button>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // --- 検索中 ---
+  if (dupPhase === "searching") {
+    return (
+      <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-md text-center">
+        <div className="py-12">
+          <div className="inline-block w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+          <p className="text-gray-600">確認中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // --- 通常の入力フォーム ---
   return (
     <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-md">
       <h2 className="text-2xl font-bold mb-6 text-gray-800">お客様情報の入力</h2>

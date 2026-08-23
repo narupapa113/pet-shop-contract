@@ -13,6 +13,20 @@ const LoginPage = ({ onLoginAdmin, onLoginStaff, companyName }) => {
         </div>
         <div className="p-8">
           <div className="space-y-6">
+            <div>
+              <button
+                onClick={onLoginAdmin}
+                className="w-full py-3 border-2 border-gray-200 hover:border-gray-400 text-gray-600 font-bold rounded-lg transition-colors flex items-center justify-center"
+              >
+                <Lock size={18} className="mr-2" />
+                管理画面へログイン
+              </button>
+            </div>
+            <div className="relative flex items-center py-2">
+              <div className="flex-grow border-t border-gray-200"></div>
+              <span className="flex-shrink-0 mx-4 text-gray-400 text-sm">または</span>
+              <div className="flex-grow border-t border-gray-200"></div>
+            </div>
             <div className="bg-gray-50 p-6 rounded-xl border border-gray-200 text-center">
               <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
                 <User className="text-blue-600" size={24} />
@@ -24,20 +38,6 @@ const LoginPage = ({ onLoginAdmin, onLoginStaff, companyName }) => {
                 className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold transition-colors shadow-md flex items-center justify-center"
               >
                 接客を開始する <ChevronRight size={18} className="ml-1" />
-              </button>
-            </div>
-            <div className="relative flex items-center py-2">
-              <div className="flex-grow border-t border-gray-200"></div>
-              <span className="flex-shrink-0 mx-4 text-gray-400 text-sm">または</span>
-              <div className="flex-grow border-t border-gray-200"></div>
-            </div>
-            <div>
-              <button
-                onClick={onLoginAdmin}
-                className="w-full py-3 border-2 border-gray-200 hover:border-gray-400 text-gray-600 font-bold rounded-lg transition-colors flex items-center justify-center"
-              >
-                <Lock size={18} className="mr-2" />
-                管理画面へログイン
               </button>
             </div>
             <div className="pt-4 border-t mt-4">

@@ -1,3 +1,17 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@media print {
+  .a4-scaled-wrapper {
+    height: auto !important;
+    overflow: visible !important;
+    max-width: none !important;
+    position: static !important;
+  }
+  .a4-scaled {
+    transform: none !important;
+    width: 100% !important;
+    position: static !important;
+  }
+}

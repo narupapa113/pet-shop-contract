@@ -1,11 +1,11 @@
 import { Play, User, PenTool, Settings, FileText } from "lucide-react";
 
 export const STEP_TYPES = {
-  VIDEO: { label: "動画説明", icon: Play },
+  VIDEO: { label: "動画視聴", icon: Play },
   CUSTOMER_INFO: { label: "お客様情報", icon: User },
   SIGNATURE: { label: "署名", icon: PenTool },
   STAFF_INPUT: { label: "店舗入力", icon: Settings },
-  CONTRACT_PREVIEW: { label: "契約書発行", icon: FileText },
+  CONTRACT_PREVIEW: { label: "契約書", icon: FileText },
 };
 
 export const DEFAULT_TEMPLATES = [
