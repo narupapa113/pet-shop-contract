@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { supabase, supabaseAdmin } from "../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { findCustomerByPhone } from "../lib/customer";
 import { Inbox, ChevronRight, ArrowLeft, Pause } from "lucide-react";
 import ProgressBar from "../components/ProgressBar";
@@ -47,7 +47,7 @@ const CustomerServiceMode = ({
   const [incompleteCount, setIncompleteCount] = useState(0);
 
   const fetchIncompleteCount = useCallback(async () => {
-    const { count } = await supabaseAdmin
+    const { count } = await supabase
       .from("sign_history")
       .select("*", { count: "exact", head: true })
       .in("status", [1, 2, 4]);
@@ -73,15 +73,15 @@ const CustomerServiceMode = ({
       updated_at: new Date().toISOString(),
     };
     try {
-      const { data: existing } = await supabaseAdmin
+      const { data: existing } = await supabase
         .from("flow_session_state")
         .select("id")
         .eq("sign_history_id", signHistoryId)
         .maybeSingle();
       if (existing?.id) {
-        await supabaseAdmin.from("flow_session_state").update(stateData).eq("id", existing.id);
+        await supabase.from("flow_session_state").update(stateData).eq("id", existing.id);
       } else {
-        await supabaseAdmin.from("flow_session_state").insert({ ...stateData, created_at: new Date().toISOString() });
+        await supabase.from("flow_session_state").insert({ ...stateData, created_at: new Date().toISOString() });
       }
     } catch (err) {
       console.error("セッション状態の保存に失敗:", err);
@@ -114,7 +114,7 @@ const CustomerServiceMode = ({
     // 保存されたセッション状態を復元（status=1 進行中の場合）
     if (item.status === 1) {
       try {
-        const { data: savedState } = await supabaseAdmin
+        const { data: savedState } = await supabase
           .from("flow_session_state")
           .select("*")
           .eq("sign_history_id", item.id)
@@ -146,7 +146,7 @@ const CustomerServiceMode = ({
 
     // 顧客情報を復元（非同期・バックグラウンド）
     if (item.sign_customer_id) {
-      const { data: cust } = await supabaseAdmin
+      const { data: cust } = await supabase
         .from("customers")
         .select("name, name_kana, tell, mail, address")
         .eq("id", item.sign_customer_id)
@@ -199,7 +199,7 @@ const CustomerServiceMode = ({
         sessionKey, flowId: flowId ?? "", videoId, watchedSec, requiredSec,
       });
     } catch {
-      await supabaseAdmin.from("video_watch_sessions").upsert(
+      await supabase.from("video_watch_sessions").upsert(
         {
           session_key: sessionKey,
           flow_id: flowId ?? "",
@@ -224,7 +224,7 @@ const CustomerServiceMode = ({
     } catch {
       const token = crypto.randomUUID() + "-" + crypto.randomUUID();
       const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-      const { error: insertError } = await supabaseAdmin.from("completion_tokens").insert({
+      const { error: insertError } = await supabase.from("completion_tokens").insert({
         token, session_key: sessionKey, flow_id: flowId ?? "", expires_at: expiresAt,
       });
       if (insertError) console.error("completion_tokens insert エラー:", insertError);
@@ -256,7 +256,7 @@ const CustomerServiceMode = ({
     const contractIdValue = uuidRegex.test(flow.id) ? flow.id : null;
     if (contractIdValue) {
       try {
-        const { data: sh } = await supabaseAdmin
+        const { data: sh } = await supabase
           .from("sign_history")
           .insert({
             contract_id: contractIdValue,
@@ -365,8 +365,8 @@ const CustomerServiceMode = ({
       if (window.confirm("メニュー選択に戻りますか？入力内容は破棄されます。")) {
         if (sessionCreatedByThisSession && signHistoryId) {
           try {
-            await supabaseAdmin.from("flow_session_state").delete().eq("sign_history_id", signHistoryId);
-            await supabaseAdmin.from("sign_history").delete().eq("id", signHistoryId);
+            await supabase.from("flow_session_state").delete().eq("sign_history_id", signHistoryId);
+            await supabase.from("sign_history").delete().eq("id", signHistoryId);
             fetchIncompleteCount();
           } catch (err) {
             console.error("sign_history 削除エラー:", err);
@@ -569,12 +569,12 @@ const CustomerServiceMode = ({
         if (!saved) {
           const blob = await (await fetch(signatureImage)).blob();
           const filePath = `signatures/${Date.now()}.png`;
-          const { error: uploadError } = await supabaseAdmin.storage
+          const { error: uploadError } = await supabase.storage
             .from("signatures")
             .upload(filePath, blob, { contentType: "image/png" });
           if (!uploadError) {
             if (newSignHistoryId) {
-              await supabaseAdmin.from("sign_history").update({
+              await supabase.from("sign_history").update({
                 sign_customer_id: newCustomerId,
                 sign_path: filePath,
                 video_id: allWatchedVideoIds,
@@ -585,7 +585,7 @@ const CustomerServiceMode = ({
               const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
               const contractIdValue = uuidRegex.test(selectedFlow.id) ? selectedFlow.id : null;
               if (contractIdValue) {
-                const { data: signHistoryData } = await supabaseAdmin
+                const { data: signHistoryData } = await supabase
                   .from("sign_history")
                   .insert({
                     contract_id: contractIdValue,
@@ -615,7 +615,7 @@ const CustomerServiceMode = ({
           create_at: now,
           update_at: now,
         }));
-        await supabaseAdmin.from("sign_input").insert(rows);
+        await supabase.from("sign_input").insert(rows);
       }
 
       // 4. customers.remarks に備考を保存
@@ -631,7 +631,7 @@ const CustomerServiceMode = ({
     }
     // 完了時はセッション状態をクリーンアップ
     if (signHistoryId) {
-      const { error: cleanErr } = await supabaseAdmin.from("flow_session_state").delete().eq("sign_history_id", signHistoryId);
+      const { error: cleanErr } = await supabase.from("flow_session_state").delete().eq("sign_history_id", signHistoryId);
       if (cleanErr) console.error("flow_session_state クリーンアップエラー:", cleanErr);
     }
     setSelectedFlow(null);
@@ -752,9 +752,9 @@ const CustomerServiceMode = ({
               if (!window.confirm("トップに戻りますか？入力中の内容は破棄されます。")) return;
               try {
                 if (sessionCreatedByThisSession && signHistoryId) {
-                  const { error: e1 } = await supabaseAdmin.from("flow_session_state").delete().eq("sign_history_id", signHistoryId);
+                  const { error: e1 } = await supabase.from("flow_session_state").delete().eq("sign_history_id", signHistoryId);
                   if (e1) console.error("flow_session_state 削除エラー:", e1);
-                  const { error: e2 } = await supabaseAdmin.from("sign_history").delete().eq("id", signHistoryId);
+                  const { error: e2 } = await supabase.from("sign_history").delete().eq("id", signHistoryId);
                   if (e2) console.error("sign_history 削除エラー:", e2);
                 }
               } catch (err) {

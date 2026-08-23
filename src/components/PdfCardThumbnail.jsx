@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
-import { supabaseAdmin } from "../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { FileText } from "lucide-react";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -32,7 +32,7 @@ const PdfCardThumbnail = ({ path, thumbnailPath }) => {
     const load = async () => {
       try {
         if (thumbnailPath) {
-          const { data, error } = await supabaseAdmin.storage.from("files").download(thumbnailPath);
+          const { data, error } = await supabase.storage.from("files").download(thumbnailPath);
           if (!cancelled && !error && data) {
             const url = URL.createObjectURL(data);
             setDataUrl(url);
@@ -41,7 +41,7 @@ const PdfCardThumbnail = ({ path, thumbnailPath }) => {
           }
         }
         if (path) {
-          const { data, error } = await supabaseAdmin.storage.from("files").download(path);
+          const { data, error } = await supabase.storage.from("files").download(path);
           if (!cancelled && !error && data) {
             const ab = await data.arrayBuffer();
             const url = await renderPdfToDataUrl(ab);

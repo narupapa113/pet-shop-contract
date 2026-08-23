@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Smartphone, ShieldCheck, Loader } from "lucide-react";
-import { supabase, supabaseAdmin } from "../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { findCustomerByPhone } from "../lib/customer";
 import ProgressBar from "../components/ProgressBar";
 import VideoStep from "../components/VideoStep";
@@ -285,7 +285,7 @@ const OnetimeUrlPage = ({ onetimeId, videoPlaylist, staffTemplates, documentsLis
         const contractIdValue = uuidRegex.test(flow.id) ? flow.id : null;
         if (contractIdValue) {
           try {
-            await supabaseAdmin.from("sign_history").insert({
+            await supabase.from("sign_history").insert({
               contract_id: contractIdValue,
               contract_name: flow.name || null,
               sign_customer_id: data.id,

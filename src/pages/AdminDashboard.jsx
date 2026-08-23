@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Settings, FileText, Plus, Trash2, Upload, LogOut, Users, ChartBar as BarChart3, Calendar, Save, CircleCheck as CheckCircle, CreditCard as Edit2, Film, X, ArrowUp, ArrowDown, MoveVertical as MoreVertical, History, User, Phone, Mail, Play, Link, Smartphone, List, LayoutDashboard, Briefcase, Shield, Search, ChevronRight, ChevronDown, RotateCcw, TriangleAlert as AlertTriangle } from "lucide-react";
-import { supabase, supabaseAdmin } from "../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { STEP_TYPES, DEFAULT_TEMPLATES } from "../constants";
 import ContractPreviewStep from "../components/ContractPreviewStep";
 import SignatureStep from "../components/SignatureStep";
@@ -209,7 +209,7 @@ const AdminDashboard = ({
   const addNewTemplate = async () => {
     if (!can(adminPermissions, 5, 2)) return;
     const defaultFields = DEFAULT_TEMPLATES[0].fields;
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from("contract_templates_header")
       .insert({ name: "新しいテンプレート" })
       .select("id, name, create_at")
@@ -225,7 +225,7 @@ const AdminDashboard = ({
       placeholder: f.placeholder || null,
       is_requaier: !!f.isRequired,
     }));
-    const { error: itemError } = await supabaseAdmin.from("contract_templates_item").insert(itemRows);
+    const { error: itemError } = await supabase.from("contract_templates_item").insert(itemRows);
     if (itemError) console.error("テンプレート項目追加エラー:", itemError);
     const newFields = defaultFields.map((f, i) => ({ ...f, id: `field_${i + 1}` }));
     setStaffTemplates([...staffTemplates, { id: newId, name: "新しいテンプレート", fields: newFields }]);
@@ -238,8 +238,8 @@ const AdminDashboard = ({
     if (window.confirm("このテンプレートを削除してもよろしいですか？")) {
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (uuidRegex.test(id)) {
-        await supabaseAdmin.from("contract_templates_item").delete().eq("id", id);
-        await supabaseAdmin.from("contract_templates_header").delete().eq("id", id);
+        await supabase.from("contract_templates_item").delete().eq("id", id);
+        await supabase.from("contract_templates_header").delete().eq("id", id);
       }
       const remaining = staffTemplates.filter((t) => t.id !== id);
       setStaffTemplates(remaining);
@@ -256,13 +256,13 @@ const AdminDashboard = ({
       setTimeout(() => setIsSaved(false), 2000);
       return;
     }
-    const { error: headerError } = await supabaseAdmin
+    const { error: headerError } = await supabase
       .from("contract_templates_header")
       .update({ name: activeTemplate.name, update_at: new Date().toISOString() })
       .eq("id", activeTemplate.id);
     if (headerError) { console.error("テンプレート保存エラー:", headerError); return; }
 
-    await supabaseAdmin.from("contract_templates_item").delete().eq("id", activeTemplate.id);
+    await supabase.from("contract_templates_item").delete().eq("id", activeTemplate.id);
 
     const itemRows = activeTemplate.fields.map((f, i) => ({
       id: activeTemplate.id,
@@ -274,7 +274,7 @@ const AdminDashboard = ({
       is_requaier: !!f.isRequired,
     }));
     if (itemRows.length > 0) {
-      const { error: itemError } = await supabaseAdmin.from("contract_templates_item").insert(itemRows);
+      const { error: itemError } = await supabase.from("contract_templates_item").insert(itemRows);
       if (itemError) { console.error("テンプレート項目保存エラー:", itemError); return; }
     }
 
@@ -498,7 +498,7 @@ const AdminDashboard = ({
         await fetchVideos();
       } else {
         if (editingContentId) {
-          const { error } = await supabaseAdmin.from("files").update({ name: newContentData.title, update_at: new Date().toISOString() }).eq("id", editingContentId);
+          const { error } = await supabase.from("files").update({ name: newContentData.title, update_at: new Date().toISOString() }).eq("id", editingContentId);
           if (error) throw error;
           await fetchDocuments();
         } else {
@@ -517,7 +517,7 @@ const AdminDashboard = ({
             lastLoaded = Math.min(lastLoaded + totalSize * 0.05, totalSize * 0.9);
             setUploadProgressPct(Math.round((lastLoaded / totalSize) * 100));
           }, 200);
-          const { error: uploadError } = await supabaseAdmin.storage.from("files").upload(filePath, selectedFile, { contentType: "application/pdf" });
+          const { error: uploadError } = await supabase.storage.from("files").upload(filePath, selectedFile, { contentType: "application/pdf" });
           clearInterval(fakeProgress);
           setUploadProgressPct(100);
           if (uploadError) throw uploadError;
@@ -529,7 +529,7 @@ const AdminDashboard = ({
             pageCount = pageBlobs.length;
             await Promise.all(
               pageBlobs.map((blob, idx) =>
-                supabaseAdmin.storage.from("files").upload(
+                supabase.storage.from("files").upload(
                   `thumbnails/${basename}_p${idx + 1}.jpg`,
                   blob,
                   { contentType: "image/jpeg", upsert: true }
@@ -538,7 +538,7 @@ const AdminDashboard = ({
             );
             // page 1 を card用サムネイルとして保存
             if (pageBlobs[0]) {
-              await supabaseAdmin.storage.from("files").upload(
+              await supabase.storage.from("files").upload(
                 `thumbnails/${basename}.jpg`,
                 pageBlobs[0],
                 { contentType: "image/jpeg", upsert: true }
@@ -546,7 +546,7 @@ const AdminDashboard = ({
             }
           } catch { /* 画像生成失敗は無視 */ }
           setUploadProgress("情報を保存中...");
-          const { error: dbError } = await supabaseAdmin.from("files").insert({
+          const { error: dbError } = await supabase.from("files").insert({
             id: crypto.randomUUID(),
             name: newContentData.title,
             path: filePath,
@@ -574,7 +574,7 @@ const AdminDashboard = ({
       setThumbnails((prev) => { const n = { ...prev }; delete n[id]; return n; });
       await fetchVideos();
     } else {
-      await supabaseAdmin.from("files").update({ is_deleted: true, deleted_at: now }).eq("id", id);
+      await supabase.from("files").update({ is_deleted: true, deleted_at: now }).eq("id", id);
       await fetchDocuments();
     }
     setDeleteConfirmId(null);
@@ -583,7 +583,7 @@ const AdminDashboard = ({
   const restoreContent = async (id) => {
     if (!can(adminPermissions, contentTab === "video" ? 6 : 7, 3)) return;
     const table = contentTab === "video" ? "videos" : "files";
-    const client = contentTab === "video" ? supabase : supabaseAdmin;
+    const client = contentTab === "video" ? supabase : supabase;
     const { error } = await client.from(table).update({ is_deleted: false, deleted_at: null }).eq("id", id);
     if (error) { alert("復元に失敗しました"); return; }
     if (contentTab === "video") { await fetchVideos(); } else { await fetchDocuments(); }
@@ -600,7 +600,7 @@ const AdminDashboard = ({
       const { data } = await supabase.from("videos").select("*").eq("is_deleted", true).order("deleted_at", { ascending: false });
       setDeletedContents(data || []);
     } else {
-      const { data } = await supabaseAdmin.from("files").select("*").eq("is_deleted", true).order("deleted_at", { ascending: false });
+      const { data } = await supabase.from("files").select("*").eq("is_deleted", true).order("deleted_at", { ascending: false });
       setDeletedContents(data || []);
     }
     setDeletedContentsLoading(false);
@@ -720,16 +720,16 @@ const AdminDashboard = ({
 
     let flowId = editingFlowId;
     if (editingFlowId) {
-      const { data: updatedData, error } = await supabaseAdmin.from("flow_header").update({ ...headerPayload, update_at: new Date().toISOString() }).eq("id", editingFlowId).select("id").maybeSingle();
+      const { data: updatedData, error } = await supabase.from("flow_header").update({ ...headerPayload, update_at: new Date().toISOString() }).eq("id", editingFlowId).select("id").maybeSingle();
       if (error) { alert(`保存に失敗しました: ${error.message}`); return; }
       if (!updatedData) { alert("保存に失敗しました: レコードが見つかりません"); return; }
     } else {
-      const { data, error } = await supabaseAdmin.from("flow_header").insert(headerPayload).select("id").maybeSingle();
+      const { data, error } = await supabase.from("flow_header").insert(headerPayload).select("id").maybeSingle();
       if (error) { alert(`保存に失敗しました: ${error.message}`); return; }
       flowId = data.id;
     }
 
-    await supabaseAdmin.from("flow_step").delete().eq("id", flowId);
+    await supabase.from("flow_step").delete().eq("id", flowId);
 
     const stepRows = editingSteps.map((step, i) => ({
       id: flowId,
@@ -739,7 +739,7 @@ const AdminDashboard = ({
       video_id: (step.videoIds || []).filter((vid) => uuidRegex.test(vid)),
     }));
     if (stepRows.length > 0) {
-      const { error: stepError } = await supabaseAdmin.from("flow_step").insert(stepRows);
+      const { error: stepError } = await supabase.from("flow_step").insert(stepRows);
       if (stepError) { alert(`ステップ保存に失敗しました: ${stepError.message}`); return; }
     }
 
@@ -750,8 +750,8 @@ const AdminDashboard = ({
   const deleteFlow = async (id) => {
     if (!can(adminPermissions, 8, 4)) return;
     if (window.confirm("このフローを削除してもよろしいですか？")) {
-      await supabaseAdmin.from("flow_step").delete().eq("id", id);
-      await supabaseAdmin.from("flow_header").delete().eq("id", id);
+      await supabase.from("flow_step").delete().eq("id", id);
+      await supabase.from("flow_header").delete().eq("id", id);
       await fetchFlows();
     }
   };
@@ -771,13 +771,13 @@ const AdminDashboard = ({
       { data: videoRows },
       { data: documentRows },
     ] = await Promise.all([
-      supabaseAdmin.from("onetime_url_manage").select("status, issue_at"),
-      supabaseAdmin.from("sign_history").select("create_at"),
-      supabaseAdmin.from("customers").select("create_at").neq("is_delete", true),
-      supabaseAdmin.from("flow_header").select("id, name, type, create_at"),
-      supabaseAdmin.from("contract_templates_header").select("id, name, create_at"),
-      supabaseAdmin.from("videos").select("id, name, create_at").eq("is_deleted", false),
-      supabaseAdmin.from("files").select("id, name, create_at").eq("is_deleted", false),
+      supabase.from("onetime_url_manage").select("status, issue_at"),
+      supabase.from("sign_history").select("create_at"),
+      supabase.from("customers").select("create_at").neq("is_delete", true),
+      supabase.from("flow_header").select("id, name, type, create_at"),
+      supabase.from("contract_templates_header").select("id, name, create_at"),
+      supabase.from("videos").select("id, name, create_at").eq("is_deleted", false),
+      supabase.from("files").select("id, name, create_at").eq("is_deleted", false),
     ]);
 
     // 事前受付URL ステータス別件数
@@ -838,7 +838,7 @@ const AdminDashboard = ({
 
   const fetchIssuedUrls = useCallback(async () => {
     setIssuedUrlsLoading(true);
-    const { data } = await supabaseAdmin
+    const { data } = await supabase
       .from("onetime_url_manage")
       .select("*")
       .order("issue_at", { ascending: false });
@@ -862,7 +862,7 @@ const AdminDashboard = ({
     const id = crypto.randomUUID();
     const url = `${window.location.origin}?onetime=${id}`;
     const selectedCustomer = customers.find((c) => c.id === selectedCustomerForUrl);
-    const { error } = await supabaseAdmin.from("onetime_url_manage").insert({
+    const { error } = await supabase.from("onetime_url_manage").insert({
       id,
       flow_id: selectedFlowForSession,
       onetime_url: url,
@@ -940,7 +940,7 @@ const AdminDashboard = ({
     let initialSignHistoryId = null;
     if (contractIdValue) {
       try {
-        const { data: sh } = await supabaseAdmin
+        const { data: sh } = await supabase
           .from("sign_history")
           .insert({
             contract_id: contractIdValue,
@@ -984,14 +984,14 @@ const AdminDashboard = ({
       if (!signHistoryId && signatureDataUrl) {
         const blob = await (await fetch(signatureDataUrl)).blob();
         const filePath = `signatures/${Date.now()}.png`;
-        const { error: uploadError } = await supabaseAdmin.storage
+        const { error: uploadError } = await supabase.storage
           .from("signatures")
           .upload(filePath, blob, { contentType: "image/png" });
         if (!uploadError) {
           const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           const contractIdValue = uuidRegex.test(flow.id) ? flow.id : null;
           if (contractIdValue) {
-            const { data: signHistoryData } = await supabaseAdmin
+            const { data: signHistoryData } = await supabase
               .from("sign_history")
               .insert({
                 contract_id: contractIdValue,
@@ -1010,11 +1010,11 @@ const AdminDashboard = ({
       } else if (signHistoryId && signatureDataUrl) {
         const blob = await (await fetch(signatureDataUrl)).blob();
         const filePath = `signatures/${Date.now()}.png`;
-        const { error: uploadError } = await supabaseAdmin.storage
+        const { error: uploadError } = await supabase.storage
           .from("signatures")
           .upload(filePath, blob, { contentType: "image/png" });
         if (!uploadError) {
-          await supabaseAdmin.from("sign_history").update({
+          await supabase.from("sign_history").update({
             sign_path: filePath,
             status: 3,
             status_updated_at: new Date().toISOString(),
@@ -1031,7 +1031,7 @@ const AdminDashboard = ({
           create_at: now,
           update_at: now,
         }));
-        await supabaseAdmin.from("sign_input").insert(rows);
+        await supabase.from("sign_input").insert(rows);
 
         if (row.customer_id) {
           const updatePayload = {
@@ -1047,13 +1047,13 @@ const AdminDashboard = ({
       // 署名済み画像URLを取得してプレビューに渡す
       let signatureImageUrl = null;
       if (signHistoryId) {
-        const { data: sh } = await supabaseAdmin
+        const { data: sh } = await supabase
           .from("sign_history")
           .select("sign_path")
           .eq("id", signHistoryId)
           .maybeSingle();
         if (sh?.sign_path) {
-          const { data: signed } = await supabaseAdmin.storage
+          const { data: signed } = await supabase.storage
             .from("signatures")
             .createSignedUrl(sh.sign_path, 3600);
           signatureImageUrl = signed?.signedUrl || null;
@@ -1072,7 +1072,7 @@ const AdminDashboard = ({
   const finishStaffInputFlow = async () => {
     if (!staffInputModal) return;
     const { row } = staffInputModal;
-    await supabaseAdmin
+    await supabase
       .from("onetime_url_manage")
       .update({ status: 7, update_at: new Date().toISOString() })
       .eq("id", row.id);
@@ -1130,7 +1130,7 @@ const AdminDashboard = ({
       remarks3: d.remarks3 || null,
     };
     if (customerModal.mode === "add") {
-      const { error } = await supabaseAdmin.from("customers").insert({
+      const { error } = await supabase.from("customers").insert({
         id: crypto.randomUUID(),
         name: d.name,
         name_kana: d.name_kana || null,
@@ -1141,7 +1141,7 @@ const AdminDashboard = ({
       });
       if (error) return alert("保存に失敗しました: " + error.message);
     } else if (customerModal.mode === "edit") {
-      const { error } = await supabaseAdmin.from("customers").update({
+      const { error } = await supabase.from("customers").update({
         name: d.name,
         name_kana: d.name_kana || null,
         address: d.address || null,
@@ -1158,7 +1158,7 @@ const AdminDashboard = ({
 const deleteCustomer = async (id) => {
   if (!can(adminPermissions, 4, 4)) return;
   try {
-    const { error } = await supabaseAdmin
+    const { error } = await supabase
       .from("customers")
       .update({ is_delete: true, update_at: new Date().toISOString() })
       .eq("id", id);
@@ -1191,14 +1191,14 @@ const deleteCustomer = async (id) => {
     setHistoryPreviewLoading(h.id);
     try {
       // sign_input (スタッフ入力値)
-      const { data: inputs } = await supabaseAdmin
+      const { data: inputs } = await supabase
         .from("sign_input")
         .select("sign_item_no, sign_item_value")
         .eq("id", h.id)
         .order("sign_item_no", { ascending: true });
 
       // flow_header (テンプレートID + 添付ファイルID一覧)
-      const { data: flowRow } = await supabaseAdmin
+      const { data: flowRow } = await supabase
         .from("flow_header")
         .select("contract_template_id, files, name")
         .eq("id", h.contract_id)
@@ -1208,14 +1208,14 @@ const deleteCustomer = async (id) => {
       let templateItems = [];
       let templateName = flowRow?.name || h.contract_name || "";
       if (flowRow?.contract_template_id) {
-        const { data: items } = await supabaseAdmin
+        const { data: items } = await supabase
           .from("contract_templates_item")
           .select("item_no, item_name")
           .eq("id", flowRow.contract_template_id)
           .order("item_no", { ascending: true });
         templateItems = items || [];
 
-        const { data: tmplHeader } = await supabaseAdmin
+        const { data: tmplHeader } = await supabase
           .from("contract_templates_header")
           .select("name")
           .eq("id", flowRow.contract_template_id)
@@ -1232,7 +1232,7 @@ const deleteCustomer = async (id) => {
       // 顧客データ
       let customerData = { name: "", nameKana: "", address: "", phone: "", email: "" };
       if (h.sign_customer_id) {
-        const { data: cust } = await supabaseAdmin
+        const { data: cust } = await supabase
           .from("customers")
           .select("*")
           .eq("id", h.sign_customer_id)
@@ -1251,7 +1251,7 @@ const deleteCustomer = async (id) => {
       // 署名画像 (Storage signed URL)
       let signatureImage = null;
       if (h.sign_path) {
-        const { data: urlData } = await supabaseAdmin.storage
+        const { data: urlData } = await supabase.storage
           .from("signatures")
           .createSignedUrl(h.sign_path, 3600);
         signatureImage = urlData?.signedUrl || null;
@@ -1273,7 +1273,7 @@ const deleteCustomer = async (id) => {
 
   const fetchSignHistory = useCallback(async () => {
     setSignHistoryLoading(true);
-    const { data } = await supabaseAdmin
+    const { data } = await supabase
       .from("sign_history")
       .select("*, customers(name, name_kana, is_delete), users(name)")
       .order("create_at", { ascending: false });
@@ -1282,7 +1282,7 @@ const deleteCustomer = async (id) => {
   }, []);
 
   const openSignHistoryDetail = useCallback(async (history) => {
-    const { data: inputs } = await supabaseAdmin
+    const { data: inputs } = await supabase
       .from("sign_input")
       .select("sign_item_no, sign_item_value")
       .eq("id", history.id)
@@ -1290,13 +1290,13 @@ const deleteCustomer = async (id) => {
 
     // contract_id = flow_header.id → contract_template_id → template items
     let templateItems = [];
-    const { data: flowRow } = await supabaseAdmin
+    const { data: flowRow } = await supabase
       .from("flow_header")
       .select("contract_template_id")
       .eq("id", history.contract_id)
       .maybeSingle();
     if (flowRow?.contract_template_id) {
-      const { data: items } = await supabaseAdmin
+      const { data: items } = await supabase
         .from("contract_templates_item")
         .select("item_no, item_name")
         .eq("id", flowRow.contract_template_id)
@@ -1850,7 +1850,7 @@ const deleteCustomer = async (id) => {
                   signatureImage={staffInputModal.signatureDataUrl}
                   onSaveSignature={(dataUrl) => setStaffInputModal((prev) => ({ ...prev, signatureDataUrl: dataUrl }))}
                   onNext={async () => {
-                    await supabaseAdmin
+                    await supabase
                       .from("onetime_url_manage")
                       .update({ status: 5, update_at: new Date().toISOString() })
                       .eq("id", staffInputModal.row.id);
@@ -2206,7 +2206,7 @@ const deleteCustomer = async (id) => {
                       className="aspect-video bg-gray-100 border-b cursor-pointer transition-colors overflow-hidden relative"
                       onClick={async () => {
                         if (!doc.path) return;
-                        const { data } = await supabaseAdmin.storage.from("files").createSignedUrl(doc.path, 3600);
+                        const { data } = await supabase.storage.from("files").createSignedUrl(doc.path, 3600);
                         if (data?.signedUrl) {
                           const res = await fetch(data.signedUrl);
                           const blob = await res.blob();

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { ShieldCheck, TriangleAlert as AlertTriangle, UserCheck, Search } from "lucide-react";
-import { supabaseAdmin } from "../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { findCustomerByPhone } from "../lib/customer";
 
 const validatePhone = (phone) => {
@@ -43,7 +43,7 @@ const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemot
     // 電話番号重複チェック
     setDupPhase("searching");
     try {
-      const existing = await findCustomerByPhone(supabaseAdmin, data.phone);
+      const existing = await findCustomerByPhone(supabase, data.phone);
       if (existing) {
         if (isRemote) {
           // リモートモード: 重複が見つかってもお客様には一切警告を見せず、そのまま次へ進む

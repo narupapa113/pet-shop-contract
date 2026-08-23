@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Smartphone } from "lucide-react";
-import { supabase, supabaseAdmin } from "../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { findCustomerByPhone } from "../lib/customer";
 import ProgressBar from "../components/ProgressBar";
 import VideoStep from "../components/VideoStep";
@@ -46,7 +46,7 @@ const CustomerRemoteMode = ({
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const contractIdValue = uuidRegex.test(flow.id) ? flow.id : null;
     if (!contractIdValue) return;
-    supabaseAdmin
+    supabase
       .from("sign_history")
       .insert({
         contract_id: contractIdValue,
@@ -123,14 +123,14 @@ const CustomerRemoteMode = ({
       if (signatureImage) {
         const blob = await (await fetch(signatureImage)).blob();
         const filePath = `signatures/${Date.now()}.png`;
-        const { error: uploadError } = await supabaseAdmin.storage
+        const { error: uploadError } = await supabase.storage
           .from("signatures")
           .upload(filePath, blob, { contentType: "image/png" });
         if (!uploadError) {
           const finalStatus = isPhoneDuplicate ? 2 : 3;
           const nowIso = new Date().toISOString();
           if (signHistoryId) {
-            await supabaseAdmin.from("sign_history").update({
+            await supabase.from("sign_history").update({
               sign_customer_id: newCustomerId,
               sign_path: filePath,
               status: finalStatus,
@@ -140,7 +140,7 @@ const CustomerRemoteMode = ({
             const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             const contractIdValue = uuidRegex.test(flow.id) ? flow.id : null;
             if (contractIdValue) {
-              const { error: historyError } = await supabaseAdmin.from("sign_history").insert({
+              const { error: historyError } = await supabase.from("sign_history").insert({
                 contract_id: contractIdValue,
                 contract_name: flow.name || null,
                 sign_customer_id: newCustomerId,
