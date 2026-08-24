@@ -8,6 +8,7 @@ import {
   RotateCcw,
   Lock,
   List,
+  Minimize2,
 } from "lucide-react";
 
 const VideoStep = ({
@@ -29,8 +30,14 @@ const VideoStep = ({
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [insufficientModal, setInsufficientModal] = useState(null);
+  const [midPauseShown, setMidPauseShown] = useState(false);
   const videoRef = useRef(null);
+  const videoContainerRef = useRef(null);
   const videoStartTimesRef = useRef({});
+  const shouldAutoPlayRef = useRef(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showPauseIcon, setShowPauseIcon] = useState(false);
+  const pauseIconTimeoutRef = useRef(null);
 
   const currentVideo = activePlaylist[currentVideoIndex] || {};
   const isAllCompleted = activePlaylist.every((v) => completedVideoIds.includes(v.id));
@@ -49,10 +56,14 @@ const VideoStep = ({
   useEffect(() => {
     setProgress(0);
     setIsPlaying(false);
+    setMidPauseShown(false);
+    setShowPauseIcon(false);
+    if (pauseIconTimeoutRef.current) clearTimeout(pauseIconTimeoutRef.current);
     if (videoRef.current) {
       videoRef.current.load();
       videoRef.current._watchedSec = 0;
       videoRef.current._lastTime = 0;
+      videoRef.current._midPaused = false;
     }
   }, [currentVideoIndex]);
 
@@ -67,6 +78,43 @@ const VideoStep = ({
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+      if (!document.fullscreenElement && videoRef.current && !videoRef.current.paused) {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      }
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (pauseIconTimeoutRef.current) clearTimeout(pauseIconTimeoutRef.current);
+    };
+  }, []);
+
+  const enterFullscreen = () => {
+    const el = videoContainerRef.current;
+    if (!el) return;
+    if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  };
+
+  const exitFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
+
+  const flashPauseIcon = () => {
+    setShowPauseIcon(true);
+    if (pauseIconTimeoutRef.current) clearTimeout(pauseIconTimeoutRef.current);
+    pauseIconTimeoutRef.current = setTimeout(() => setShowPauseIcon(false), 2500);
+  };
+
   const handleTimeUpdate = () => {
     const v = videoRef.current;
     if (!v || !v.duration) return;
@@ -80,6 +128,20 @@ const VideoStep = ({
       v._watchedSec = (v._watchedSec || 0) + delta;
     }
     v._lastTime = now;
+
+    if (!v._midPaused && v.duration && v.currentTime >= v.duration / 2) {
+      v._midPaused = true;
+      v.pause();
+      setMidPauseShown(true);
+    }
+  };
+
+  const handleResumeFromMidPause = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    setMidPauseShown(false);
+    v.play();
+    setIsPlaying(true);
   };
 
   const handleVideoEnded = () => {
@@ -92,6 +154,7 @@ const VideoStep = ({
       const threshold = actualDuration > 0 ? actualDuration : requiredSec;
 
       if (watchedSec < threshold * 0.99) {
+        exitFullscreen();
         const fmt = (s) => `${Math.floor(s / 60)}分${Math.round(s % 60)}秒`;
         if (v) {
           v._watchedSec = 0;
@@ -114,16 +177,22 @@ const VideoStep = ({
   const togglePlay = () => {
     const v = videoRef.current;
     if (!v) return;
+    if (midPauseShown) return;
     if (isCurrentCompleted) {
       v.currentTime = 0;
       setProgress(0);
+      v._midPaused = false;
+      setMidPauseShown(false);
       v.play();
       setIsPlaying(true);
+      enterFullscreen();
+      flashPauseIcon();
       return;
     }
     if (isPlaying) {
       v.pause();
       setIsPlaying(false);
+      exitFullscreen();
     } else {
       if (!videoStartTimesRef.current[currentVideo.id]) {
         const startTime = Date.now();
@@ -132,12 +201,29 @@ const VideoStep = ({
       }
       v.play();
       setIsPlaying(true);
+      enterFullscreen();
+      flashPauseIcon();
     }
   };
 
   const handleNextVideo = () => {
-    if (currentVideoIndex < activePlaylist.length - 1)
+    if (currentVideoIndex < activePlaylist.length - 1) {
+      shouldAutoPlayRef.current = true;
       setCurrentVideoIndex((prev) => prev + 1);
+    }
+  };
+
+  const handleLoadedData = () => {
+    if (shouldAutoPlayRef.current) {
+      shouldAutoPlayRef.current = false;
+      const v = videoRef.current;
+      if (v) {
+        v.play().then(() => {
+          setIsPlaying(true);
+          if (!document.fullscreenElement) enterFullscreen();
+        }).catch(() => {});
+      }
+    }
   };
 
   const selectVideo = (index) => {
@@ -195,7 +281,7 @@ const VideoStep = ({
       </div>
       <div className="flex flex-col md:flex-row w-full gap-6 mb-6">
         <div className="flex-1 bg-gray-900 rounded-lg overflow-hidden shadow-lg flex flex-col">
-          <div className="aspect-video relative flex items-center justify-center bg-gray-800 cursor-pointer flex-grow" onClick={togglePlay}>
+          <div ref={videoContainerRef} className="aspect-video relative flex items-center justify-center bg-gray-800 cursor-pointer flex-grow" onClick={togglePlay}>
             {currentVideo.url ? (
               <video
                 ref={videoRef}
@@ -203,6 +289,7 @@ const VideoStep = ({
                 className="absolute inset-0 w-full h-full object-contain"
                 onTimeUpdate={handleTimeUpdate}
                 onEnded={handleVideoEnded}
+                onLoadedData={handleLoadedData}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
               />
@@ -216,10 +303,24 @@ const VideoStep = ({
                 </div>
               </div>
             )}
-            {isPlaying && (
-              <div className="opacity-0 hover:opacity-100 absolute inset-0 flex items-center justify-center bg-black/30 transition-opacity z-10">
+            {isPlaying && showPauseIcon && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/30 transition-opacity z-10 pointer-events-none">
                 <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
                   <Pause size={32} className="text-white" />
+                </div>
+              </div>
+            )}
+            {midPauseShown && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20">
+                <div className="text-center px-6">
+                  <div className="w-16 h-16 rounded-full bg-blue-500/20 flex items-center justify-center mb-4 mx-auto">
+                    <Pause size={32} className="text-blue-300" />
+                  </div>
+                  <p className="text-white text-xl font-bold mb-2">途中チェック</p>
+                  <p className="text-gray-300 text-sm mb-6">動画の中間地点に到達しました。<br/>続けて視聴するには下のボタンを押してください。</p>
+                  <button onClick={(e) => { e.stopPropagation(); handleResumeFromMidPause(); }} className="px-8 py-3 bg-blue-600 text-white rounded-full font-bold hover:bg-blue-700 transition-colors shadow-lg">
+                    続けて見る
+                  </button>
                 </div>
               </div>
             )}
@@ -238,6 +339,15 @@ const VideoStep = ({
                   <RotateCcw size={12} className="mr-1" /> もう一度見る
                 </button>
               </div>
+            )}
+            {isFullscreen && (
+              <button
+                onClick={(e) => { e.stopPropagation(); exitFullscreen(); }}
+                className="absolute bottom-3 right-3 z-30 bg-black/50 hover:bg-black/70 text-white p-2 rounded-lg transition-colors"
+                aria-label="全画面解除"
+              >
+                <Minimize2 size={20} />
+              </button>
             )}
             <div className="absolute top-4 left-4 z-10">
               <span className="bg-black/50 text-white text-xs px-2 py-1 rounded border border-white/20">

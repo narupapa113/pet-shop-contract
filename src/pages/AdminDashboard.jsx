@@ -1,39 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
-import {
-  Settings,
-  FileText,
-  Plus,
-  Trash2,
-  Upload,
-  LogOut,
-  Users,
-  ChartBar as BarChart3,
-  Calendar,
-  Save,
-  CircleCheck as CheckCircle,
-  CreditCard as Edit2,
-  Film,
-  X,
-  ArrowUp,
-  ArrowDown,
-  MoveVertical as MoreVertical,
-  History,
-  User,
-  Phone,
-  Mail,
-  Play,
-  Link,
-  Smartphone,
-  List,
-  LayoutDashboard,
-  Briefcase,
-  Shield,
-  Search,
-  ChevronRight,
-  ChevronDown,
-  RotateCcw,
-} from "lucide-react";
-import { supabase, supabaseAdmin } from "../lib/supabase";
+import { Settings, FileText, Plus, Trash2, Upload, LogOut, Users, ChartBar as BarChart3, Calendar, Save, CircleCheck as CheckCircle, CreditCard as Edit2, Film, X, ArrowUp, ArrowDown, MoveVertical as MoreVertical, History, User, Phone, Mail, Play, Link, Smartphone, List, LayoutDashboard, Briefcase, Shield, Search, ChevronRight, ChevronDown, RotateCcw, TriangleAlert as AlertTriangle } from "lucide-react";
+import { supabase } from "../lib/supabase";
 import { STEP_TYPES, DEFAULT_TEMPLATES } from "../constants";
 import ContractPreviewStep from "../components/ContractPreviewStep";
 import SignatureStep from "../components/SignatureStep";
@@ -97,6 +64,35 @@ const canView = (adminPermissions, functionIds) => {
   return functionIds.some((id) => adminPermissions[id]?.has(1) ?? false);
 };
 
+function SelectOptionAddForm({ onAdd, disabled }) {
+  const [text, setText] = useState("");
+  const submit = (e) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    onAdd(text.trim());
+    setText("");
+  };
+  return (
+    <form onSubmit={submit} className="flex gap-1.5">
+      <input
+        type="text"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="選択肢を入力"
+        disabled={disabled}
+        className="flex-1 text-sm border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-400 disabled:bg-gray-100"
+      />
+      <button
+        type="submit"
+        disabled={disabled || !text.trim()}
+        className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:hover:bg-blue-600 flex items-center"
+      >
+        <Plus size={14} />
+      </button>
+    </form>
+  );
+}
+
 const AdminDashboard = ({
   onLogout,
   staffTemplates,
@@ -152,6 +148,7 @@ const AdminDashboard = ({
       value: "",
       type: "text",
       placeholder: "",
+      isRequired: false,
     });
     setStaffTemplates(newTemplates);
     setIsSaved(false);
@@ -168,10 +165,51 @@ const AdminDashboard = ({
 
   const INPUT_TYPE_NUM = { text: 1, number: 2, date: 3, select: 4 };
 
+  const addSelectOption = (fieldIndex, text) => {
+    if (!activeTemplate || !text.trim()) return;
+    const newTemplates = [...staffTemplates];
+    const field = newTemplates.find((t) => t.id === activeTemplate.id).fields[fieldIndex];
+    field.options = [...(field.options || []), text.trim()];
+    setStaffTemplates(newTemplates);
+    setIsSaved(false);
+  };
+
+  const updateSelectOption = (fieldIndex, optIndex, text) => {
+    if (!activeTemplate) return;
+    const newTemplates = [...staffTemplates];
+    const field = newTemplates.find((t) => t.id === activeTemplate.id).fields[fieldIndex];
+    field.options = [...(field.options || [])];
+    field.options[optIndex] = text;
+    setStaffTemplates(newTemplates);
+    setIsSaved(false);
+  };
+
+  const removeSelectOption = (fieldIndex, optIndex) => {
+    if (!activeTemplate) return;
+    const newTemplates = [...staffTemplates];
+    const field = newTemplates.find((t) => t.id === activeTemplate.id).fields[fieldIndex];
+    field.options = (field.options || []).filter((_, i) => i !== optIndex);
+    setStaffTemplates(newTemplates);
+    setIsSaved(false);
+  };
+
+  const moveSelectOption = (fieldIndex, optIndex, dir) => {
+    if (!activeTemplate) return;
+    const newTemplates = [...staffTemplates];
+    const field = newTemplates.find((t) => t.id === activeTemplate.id).fields[fieldIndex];
+    const opts = [...(field.options || [])];
+    const newIndex = optIndex + dir;
+    if (newIndex < 0 || newIndex >= opts.length) return;
+    [opts[optIndex], opts[newIndex]] = [opts[newIndex], opts[optIndex]];
+    field.options = opts;
+    setStaffTemplates(newTemplates);
+    setIsSaved(false);
+  };
+
   const addNewTemplate = async () => {
     if (!can(adminPermissions, 5, 2)) return;
     const defaultFields = DEFAULT_TEMPLATES[0].fields;
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from("contract_templates_header")
       .insert({ name: "新しいテンプレート" })
       .select("id, name, create_at")
@@ -185,8 +223,9 @@ const AdminDashboard = ({
       input_type: INPUT_TYPE_NUM[f.type] ?? 1,
       input_select: f.options || [],
       placeholder: f.placeholder || null,
+      is_requaier: !!f.isRequired,
     }));
-    const { error: itemError } = await supabaseAdmin.from("contract_templates_item").insert(itemRows);
+    const { error: itemError } = await supabase.from("contract_templates_item").insert(itemRows);
     if (itemError) console.error("テンプレート項目追加エラー:", itemError);
     const newFields = defaultFields.map((f, i) => ({ ...f, id: `field_${i + 1}` }));
     setStaffTemplates([...staffTemplates, { id: newId, name: "新しいテンプレート", fields: newFields }]);
@@ -199,8 +238,8 @@ const AdminDashboard = ({
     if (window.confirm("このテンプレートを削除してもよろしいですか？")) {
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (uuidRegex.test(id)) {
-        await supabaseAdmin.from("contract_templates_item").delete().eq("id", id);
-        await supabaseAdmin.from("contract_templates_header").delete().eq("id", id);
+        await supabase.from("contract_templates_item").delete().eq("id", id);
+        await supabase.from("contract_templates_header").delete().eq("id", id);
       }
       const remaining = staffTemplates.filter((t) => t.id !== id);
       setStaffTemplates(remaining);
@@ -217,13 +256,13 @@ const AdminDashboard = ({
       setTimeout(() => setIsSaved(false), 2000);
       return;
     }
-    const { error: headerError } = await supabaseAdmin
+    const { error: headerError } = await supabase
       .from("contract_templates_header")
       .update({ name: activeTemplate.name, update_at: new Date().toISOString() })
       .eq("id", activeTemplate.id);
     if (headerError) { console.error("テンプレート保存エラー:", headerError); return; }
 
-    await supabaseAdmin.from("contract_templates_item").delete().eq("id", activeTemplate.id);
+    await supabase.from("contract_templates_item").delete().eq("id", activeTemplate.id);
 
     const itemRows = activeTemplate.fields.map((f, i) => ({
       id: activeTemplate.id,
@@ -232,9 +271,10 @@ const AdminDashboard = ({
       input_type: INPUT_TYPE_NUM[f.type] ?? 1,
       input_select: f.options || [],
       placeholder: f.placeholder || null,
+      is_requaier: !!f.isRequired,
     }));
     if (itemRows.length > 0) {
-      const { error: itemError } = await supabaseAdmin.from("contract_templates_item").insert(itemRows);
+      const { error: itemError } = await supabase.from("contract_templates_item").insert(itemRows);
       if (itemError) { console.error("テンプレート項目保存エラー:", itemError); return; }
     }
 
@@ -257,7 +297,7 @@ const AdminDashboard = ({
   const [previewingDoc, setPreviewingDoc] = useState(null); // { title, url }
 
   const fetchDocuments = useCallback(async () => {
-    const { data } = await supabase.from("files").select("*").order("create_at", { ascending: false });
+    const { data } = await supabase.from("files").select("*").eq("is_deleted", false).order("create_at", { ascending: false });
     if (data) {
       setDocumentsList(data.map((f) => {
         const thumbPath = f.path
@@ -281,7 +321,7 @@ const AdminDashboard = ({
   }, [fetchDocuments]);
 
   const fetchVideos = useCallback(async () => {
-    const { data } = await supabase.from("videos").select("*").order("create_at", { ascending: false });
+    const { data } = await supabase.from("videos").select("*").eq("is_deleted", false).order("create_at", { ascending: false });
     if (data) {
       const videos = await Promise.all(
         data.map(async (v) => {
@@ -458,7 +498,7 @@ const AdminDashboard = ({
         await fetchVideos();
       } else {
         if (editingContentId) {
-          const { error } = await supabaseAdmin.from("files").update({ name: newContentData.title, update_at: new Date().toISOString() }).eq("id", editingContentId);
+          const { error } = await supabase.from("files").update({ name: newContentData.title, update_at: new Date().toISOString() }).eq("id", editingContentId);
           if (error) throw error;
           await fetchDocuments();
         } else {
@@ -477,7 +517,7 @@ const AdminDashboard = ({
             lastLoaded = Math.min(lastLoaded + totalSize * 0.05, totalSize * 0.9);
             setUploadProgressPct(Math.round((lastLoaded / totalSize) * 100));
           }, 200);
-          const { error: uploadError } = await supabaseAdmin.storage.from("files").upload(filePath, selectedFile, { contentType: "application/pdf" });
+          const { error: uploadError } = await supabase.storage.from("files").upload(filePath, selectedFile, { contentType: "application/pdf" });
           clearInterval(fakeProgress);
           setUploadProgressPct(100);
           if (uploadError) throw uploadError;
@@ -489,7 +529,7 @@ const AdminDashboard = ({
             pageCount = pageBlobs.length;
             await Promise.all(
               pageBlobs.map((blob, idx) =>
-                supabaseAdmin.storage.from("files").upload(
+                supabase.storage.from("files").upload(
                   `thumbnails/${basename}_p${idx + 1}.jpg`,
                   blob,
                   { contentType: "image/jpeg", upsert: true }
@@ -498,7 +538,7 @@ const AdminDashboard = ({
             );
             // page 1 を card用サムネイルとして保存
             if (pageBlobs[0]) {
-              await supabaseAdmin.storage.from("files").upload(
+              await supabase.storage.from("files").upload(
                 `thumbnails/${basename}.jpg`,
                 pageBlobs[0],
                 { contentType: "image/jpeg", upsert: true }
@@ -506,7 +546,7 @@ const AdminDashboard = ({
             }
           } catch { /* 画像生成失敗は無視 */ }
           setUploadProgress("情報を保存中...");
-          const { error: dbError } = await supabaseAdmin.from("files").insert({
+          const { error: dbError } = await supabase.from("files").insert({
             id: crypto.randomUUID(),
             name: newContentData.title,
             path: filePath,
@@ -528,20 +568,45 @@ const AdminDashboard = ({
 
   const deleteContent = async (id) => {
     if (!can(adminPermissions, contentTab === "video" ? 6 : 7, 4)) return;
+    const now = new Date().toISOString();
     if (contentTab === "video") {
-      const video = videoPlaylist.find((v) => v.id === id);
-      if (video?.path) await supabase.storage.from("videos").remove([video.path]);
-      await supabase.from("videos").delete().eq("id", id);
+      await supabase.from("videos").update({ is_deleted: true, deleted_at: now }).eq("id", id);
       setThumbnails((prev) => { const n = { ...prev }; delete n[id]; return n; });
       await fetchVideos();
     } else {
-      const doc = documentsList.find((d) => d.id === id);
-      if (doc?.path) await supabaseAdmin.storage.from("files").remove([doc.path]);
-      await supabaseAdmin.from("files").delete().eq("id", id);
+      await supabase.from("files").update({ is_deleted: true, deleted_at: now }).eq("id", id);
       await fetchDocuments();
     }
     setDeleteConfirmId(null);
   };
+
+  const restoreContent = async (id) => {
+    if (!can(adminPermissions, contentTab === "video" ? 6 : 7, 3)) return;
+    const table = contentTab === "video" ? "videos" : "files";
+    const client = contentTab === "video" ? supabase : supabase;
+    const { error } = await client.from(table).update({ is_deleted: false, deleted_at: null }).eq("id", id);
+    if (error) { alert("復元に失敗しました"); return; }
+    if (contentTab === "video") { await fetchVideos(); } else { await fetchDocuments(); }
+    await fetchDeletedContents();
+  };
+
+  const [deletedContents, setDeletedContents] = useState([]);
+  const [deletedContentsLoading, setDeletedContentsLoading] = useState(false);
+  const [showDeletedContentsModal, setShowDeletedContentsModal] = useState(false);
+
+  const fetchDeletedContents = useCallback(async () => {
+    setDeletedContentsLoading(true);
+    if (contentTab === "video") {
+      const { data } = await supabase.from("videos").select("*").eq("is_deleted", true).order("deleted_at", { ascending: false });
+      setDeletedContents(data || []);
+    } else {
+      const { data } = await supabase.from("files").select("*").eq("is_deleted", true).order("deleted_at", { ascending: false });
+      setDeletedContents(data || []);
+    }
+    setDeletedContentsLoading(false);
+  }, [contentTab]);
+
+  useEffect(() => { setDeletedContents([]); }, [contentTab]);
 
   // --- フロー管理 ---
   const [editingFlowId, setEditingFlowId] = useState(null);
@@ -655,16 +720,16 @@ const AdminDashboard = ({
 
     let flowId = editingFlowId;
     if (editingFlowId) {
-      const { data: updatedData, error } = await supabaseAdmin.from("flow_header").update({ ...headerPayload, update_at: new Date().toISOString() }).eq("id", editingFlowId).select("id").maybeSingle();
+      const { data: updatedData, error } = await supabase.from("flow_header").update({ ...headerPayload, update_at: new Date().toISOString() }).eq("id", editingFlowId).select("id").maybeSingle();
       if (error) { alert(`保存に失敗しました: ${error.message}`); return; }
       if (!updatedData) { alert("保存に失敗しました: レコードが見つかりません"); return; }
     } else {
-      const { data, error } = await supabaseAdmin.from("flow_header").insert(headerPayload).select("id").maybeSingle();
+      const { data, error } = await supabase.from("flow_header").insert(headerPayload).select("id").maybeSingle();
       if (error) { alert(`保存に失敗しました: ${error.message}`); return; }
       flowId = data.id;
     }
 
-    await supabaseAdmin.from("flow_step").delete().eq("id", flowId);
+    await supabase.from("flow_step").delete().eq("id", flowId);
 
     const stepRows = editingSteps.map((step, i) => ({
       id: flowId,
@@ -674,7 +739,7 @@ const AdminDashboard = ({
       video_id: (step.videoIds || []).filter((vid) => uuidRegex.test(vid)),
     }));
     if (stepRows.length > 0) {
-      const { error: stepError } = await supabaseAdmin.from("flow_step").insert(stepRows);
+      const { error: stepError } = await supabase.from("flow_step").insert(stepRows);
       if (stepError) { alert(`ステップ保存に失敗しました: ${stepError.message}`); return; }
     }
 
@@ -685,8 +750,8 @@ const AdminDashboard = ({
   const deleteFlow = async (id) => {
     if (!can(adminPermissions, 8, 4)) return;
     if (window.confirm("このフローを削除してもよろしいですか？")) {
-      await supabaseAdmin.from("flow_step").delete().eq("id", id);
-      await supabaseAdmin.from("flow_header").delete().eq("id", id);
+      await supabase.from("flow_step").delete().eq("id", id);
+      await supabase.from("flow_header").delete().eq("id", id);
       await fetchFlows();
     }
   };
@@ -706,13 +771,13 @@ const AdminDashboard = ({
       { data: videoRows },
       { data: documentRows },
     ] = await Promise.all([
-      supabaseAdmin.from("onetime_url_manage").select("status, issue_at"),
-      supabaseAdmin.from("sign_history").select("create_at"),
-      supabaseAdmin.from("customers").select("create_at").neq("is_delete", true),
-      supabaseAdmin.from("flow_header").select("id, name, type, create_at"),
-      supabaseAdmin.from("contract_templates_header").select("id, name, create_at"),
-      supabaseAdmin.from("videos").select("id, name, create_at"),
-      supabaseAdmin.from("files").select("id, name, create_at"),
+      supabase.from("onetime_url_manage").select("status, issue_at"),
+      supabase.from("sign_history").select("create_at"),
+      supabase.from("customers").select("create_at").neq("is_delete", true),
+      supabase.from("flow_header").select("id, name, type, create_at"),
+      supabase.from("contract_templates_header").select("id, name, create_at"),
+      supabase.from("videos").select("id, name, create_at").eq("is_deleted", false),
+      supabase.from("files").select("id, name, create_at").eq("is_deleted", false),
     ]);
 
     // 事前受付URL ステータス別件数
@@ -773,7 +838,7 @@ const AdminDashboard = ({
 
   const fetchIssuedUrls = useCallback(async () => {
     setIssuedUrlsLoading(true);
-    const { data } = await supabaseAdmin
+    const { data } = await supabase
       .from("onetime_url_manage")
       .select("*")
       .order("issue_at", { ascending: false });
@@ -797,7 +862,7 @@ const AdminDashboard = ({
     const id = crypto.randomUUID();
     const url = `${window.location.origin}?onetime=${id}`;
     const selectedCustomer = customers.find((c) => c.id === selectedCustomerForUrl);
-    const { error } = await supabaseAdmin.from("onetime_url_manage").insert({
+    const { error } = await supabase.from("onetime_url_manage").insert({
       id,
       flow_id: selectedFlowForSession,
       onetime_url: url,
@@ -825,10 +890,21 @@ const AdminDashboard = ({
 
   const deleteOnetimeUrl = async (id) => {
     if (!can(adminPermissions, 2, 4)) return;
-    await supabaseAdmin.from("otp_codes").delete().eq("onetime_id", id);
-    await supabaseAdmin.from("onetime_url_manage").delete().eq("id", id);
-    setDeleteOnetimeConfirmId(null);
-    fetchIssuedUrls();
+    try {
+      const resp = await fetch("/.netlify/functions/delete-onetime-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const result = await resp.json();
+      if (!resp.ok) throw new Error(result.error || "削除に失敗しました");
+
+      setDeleteOnetimeConfirmId(null);
+      fetchIssuedUrls();
+    } catch (err) {
+      console.error("削除エラー:", err);
+      alert("削除に失敗しました: " + (err.message || JSON.stringify(err)));
+    }
   };
 
   // --- スタッフ入力モーダル ---
@@ -858,8 +934,31 @@ const AdminDashboard = ({
       }
     }
 
-    // 署名フェーズから開始
-    setStaffInputModal({ row, flow, fields, phase: "signature", customerData, signatureDataUrl: null, signHistoryId: null, remarksArr: ["", "", ""] });
+    // 署名フェーズから開始: sign_history を status=1（進行中）で作成
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const contractIdValue = uuidRegex.test(flow.id) ? flow.id : null;
+    let initialSignHistoryId = null;
+    if (contractIdValue) {
+      try {
+        const { data: sh } = await supabase
+          .from("sign_history")
+          .insert({
+            contract_id: contractIdValue,
+            contract_name: flow.name || null,
+            sign_customer_id: row.customer_id || null,
+            status: 1,
+            status_updated_at: new Date().toISOString(),
+            onetime_url_id: row.id || null,
+          })
+          .select("id")
+          .maybeSingle();
+        initialSignHistoryId = sh?.id ?? null;
+      } catch (err) {
+        console.error("sign_history 作成エラー:", err);
+      }
+    }
+
+    setStaffInputModal({ row, flow, fields, phase: "signature", customerData, signatureDataUrl: null, signHistoryId: initialSignHistoryId, remarksArr: ["", "", ""] });
   };
 
   const handleStaffInputFieldChange = (id, value) => {
@@ -881,18 +980,18 @@ const AdminDashboard = ({
 
       let signHistoryId = existingSignHistoryId;
 
-      // 署名をアップロードして sign_history を作成
+      // 署名をアップロードして sign_history を完了状態に UPDATE
       if (!signHistoryId && signatureDataUrl) {
         const blob = await (await fetch(signatureDataUrl)).blob();
         const filePath = `signatures/${Date.now()}.png`;
-        const { error: uploadError } = await supabaseAdmin.storage
+        const { error: uploadError } = await supabase.storage
           .from("signatures")
           .upload(filePath, blob, { contentType: "image/png" });
         if (!uploadError) {
           const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           const contractIdValue = uuidRegex.test(flow.id) ? flow.id : null;
           if (contractIdValue) {
-            const { data: signHistoryData } = await supabaseAdmin
+            const { data: signHistoryData } = await supabase
               .from("sign_history")
               .insert({
                 contract_id: contractIdValue,
@@ -900,11 +999,26 @@ const AdminDashboard = ({
                 sign_customer_id: row.customer_id || null,
                 sign_path: filePath,
                 video_id: [],
+                status: 3,
+                status_updated_at: new Date().toISOString(),
               })
               .select("id")
               .maybeSingle();
             signHistoryId = signHistoryData?.id ?? null;
           }
+        }
+      } else if (signHistoryId && signatureDataUrl) {
+        const blob = await (await fetch(signatureDataUrl)).blob();
+        const filePath = `signatures/${Date.now()}.png`;
+        const { error: uploadError } = await supabase.storage
+          .from("signatures")
+          .upload(filePath, blob, { contentType: "image/png" });
+        if (!uploadError) {
+          await supabase.from("sign_history").update({
+            sign_path: filePath,
+            status: 3,
+            status_updated_at: new Date().toISOString(),
+          }).eq("id", signHistoryId);
         }
       }
 
@@ -917,7 +1031,7 @@ const AdminDashboard = ({
           create_at: now,
           update_at: now,
         }));
-        await supabaseAdmin.from("sign_input").insert(rows);
+        await supabase.from("sign_input").insert(rows);
 
         if (row.customer_id) {
           const updatePayload = {
@@ -933,13 +1047,13 @@ const AdminDashboard = ({
       // 署名済み画像URLを取得してプレビューに渡す
       let signatureImageUrl = null;
       if (signHistoryId) {
-        const { data: sh } = await supabaseAdmin
+        const { data: sh } = await supabase
           .from("sign_history")
           .select("sign_path")
           .eq("id", signHistoryId)
           .maybeSingle();
         if (sh?.sign_path) {
-          const { data: signed } = await supabaseAdmin.storage
+          const { data: signed } = await supabase.storage
             .from("signatures")
             .createSignedUrl(sh.sign_path, 3600);
           signatureImageUrl = signed?.signedUrl || null;
@@ -958,7 +1072,7 @@ const AdminDashboard = ({
   const finishStaffInputFlow = async () => {
     if (!staffInputModal) return;
     const { row } = staffInputModal;
-    await supabaseAdmin
+    await supabase
       .from("onetime_url_manage")
       .update({ status: 7, update_at: new Date().toISOString() })
       .eq("id", row.id);
@@ -1016,7 +1130,7 @@ const AdminDashboard = ({
       remarks3: d.remarks3 || null,
     };
     if (customerModal.mode === "add") {
-      const { error } = await supabaseAdmin.from("customers").insert({
+      const { error } = await supabase.from("customers").insert({
         id: crypto.randomUUID(),
         name: d.name,
         name_kana: d.name_kana || null,
@@ -1027,7 +1141,7 @@ const AdminDashboard = ({
       });
       if (error) return alert("保存に失敗しました: " + error.message);
     } else if (customerModal.mode === "edit") {
-      const { error } = await supabaseAdmin.from("customers").update({
+      const { error } = await supabase.from("customers").update({
         name: d.name,
         name_kana: d.name_kana || null,
         address: d.address || null,
@@ -1044,7 +1158,7 @@ const AdminDashboard = ({
 const deleteCustomer = async (id) => {
   if (!can(adminPermissions, 4, 4)) return;
   try {
-    const { error } = await supabaseAdmin
+    const { error } = await supabase
       .from("customers")
       .update({ is_delete: true, update_at: new Date().toISOString() })
       .eq("id", id);
@@ -1069,6 +1183,7 @@ const deleteCustomer = async (id) => {
   const [signHistoryLoading, setSignHistoryLoading] = useState(false);
   const [signHistoryDetail, setSignHistoryDetail] = useState(null);
   const [signHistorySearch, setSignHistorySearch] = useState("");
+  const [historyStatusFilter, setHistoryStatusFilter] = useState("all");
   const [historyPreviewLoading, setHistoryPreviewLoading] = useState(null); // row id
   const [historyPreviewData, setHistoryPreviewData] = useState(null); // ContractPreviewStep props
 
@@ -1076,14 +1191,14 @@ const deleteCustomer = async (id) => {
     setHistoryPreviewLoading(h.id);
     try {
       // sign_input (スタッフ入力値)
-      const { data: inputs } = await supabaseAdmin
+      const { data: inputs } = await supabase
         .from("sign_input")
         .select("sign_item_no, sign_item_value")
         .eq("id", h.id)
         .order("sign_item_no", { ascending: true });
 
       // flow_header (テンプレートID + 添付ファイルID一覧)
-      const { data: flowRow } = await supabaseAdmin
+      const { data: flowRow } = await supabase
         .from("flow_header")
         .select("contract_template_id, files, name")
         .eq("id", h.contract_id)
@@ -1093,14 +1208,14 @@ const deleteCustomer = async (id) => {
       let templateItems = [];
       let templateName = flowRow?.name || h.contract_name || "";
       if (flowRow?.contract_template_id) {
-        const { data: items } = await supabaseAdmin
+        const { data: items } = await supabase
           .from("contract_templates_item")
           .select("item_no, item_name")
           .eq("id", flowRow.contract_template_id)
           .order("item_no", { ascending: true });
         templateItems = items || [];
 
-        const { data: tmplHeader } = await supabaseAdmin
+        const { data: tmplHeader } = await supabase
           .from("contract_templates_header")
           .select("name")
           .eq("id", flowRow.contract_template_id)
@@ -1117,7 +1232,7 @@ const deleteCustomer = async (id) => {
       // 顧客データ
       let customerData = { name: "", nameKana: "", address: "", phone: "", email: "" };
       if (h.sign_customer_id) {
-        const { data: cust } = await supabaseAdmin
+        const { data: cust } = await supabase
           .from("customers")
           .select("*")
           .eq("id", h.sign_customer_id)
@@ -1136,7 +1251,7 @@ const deleteCustomer = async (id) => {
       // 署名画像 (Storage signed URL)
       let signatureImage = null;
       if (h.sign_path) {
-        const { data: urlData } = await supabaseAdmin.storage
+        const { data: urlData } = await supabase.storage
           .from("signatures")
           .createSignedUrl(h.sign_path, 3600);
         signatureImage = urlData?.signedUrl || null;
@@ -1158,7 +1273,7 @@ const deleteCustomer = async (id) => {
 
   const fetchSignHistory = useCallback(async () => {
     setSignHistoryLoading(true);
-    const { data } = await supabaseAdmin
+    const { data } = await supabase
       .from("sign_history")
       .select("*, customers(name, name_kana, is_delete), users(name)")
       .order("create_at", { ascending: false });
@@ -1167,7 +1282,7 @@ const deleteCustomer = async (id) => {
   }, []);
 
   const openSignHistoryDetail = useCallback(async (history) => {
-    const { data: inputs } = await supabaseAdmin
+    const { data: inputs } = await supabase
       .from("sign_input")
       .select("sign_item_no, sign_item_value")
       .eq("id", history.id)
@@ -1175,13 +1290,13 @@ const deleteCustomer = async (id) => {
 
     // contract_id = flow_header.id → contract_template_id → template items
     let templateItems = [];
-    const { data: flowRow } = await supabaseAdmin
+    const { data: flowRow } = await supabase
       .from("flow_header")
       .select("contract_template_id")
       .eq("id", history.contract_id)
       .maybeSingle();
     if (flowRow?.contract_template_id) {
-      const { data: items } = await supabaseAdmin
+      const { data: items } = await supabase
         .from("contract_templates_item")
         .select("item_no, item_name")
         .eq("id", flowRow.contract_template_id)
@@ -1239,8 +1354,6 @@ const deleteCustomer = async (id) => {
   }, [settingsTab]);
 
   const handleSaveCompany = () => {
-    if (!can(adminPermissions, 9, 3)) return;
-    setCompanyInfo(tempCompanyInfo);
     alert("会社情報を保存しました");
   };
 
@@ -1737,7 +1850,7 @@ const deleteCustomer = async (id) => {
                   signatureImage={staffInputModal.signatureDataUrl}
                   onSaveSignature={(dataUrl) => setStaffInputModal((prev) => ({ ...prev, signatureDataUrl: dataUrl }))}
                   onNext={async () => {
-                    await supabaseAdmin
+                    await supabase
                       .from("onetime_url_manage")
                       .update({ status: 5, update_at: new Date().toISOString() })
                       .eq("id", staffInputModal.row.id);
@@ -1933,35 +2046,83 @@ const deleteCustomer = async (id) => {
                               <th className="p-3 text-sm font-semibold text-gray-600 w-1/4">項目名</th>
                               <th className="p-3 text-sm font-semibold text-gray-600 w-1/5">入力タイプ</th>
                               <th className="p-3 text-sm font-semibold text-gray-600 w-1/3">プレースホルダー</th>
+                              <th className="p-3 text-sm font-semibold text-gray-600 w-20 text-center">必須</th>
                               <th className="p-3 text-sm font-semibold text-gray-600 w-16 text-center">削除</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
                             {activeTemplate.fields.map((field, index) => (
-                              <tr key={field.id} className="hover:bg-gray-50">
-                                <td className="p-2">
-                                  <input type="text" value={field.label} onChange={(e) => updateField(index, "label", e.target.value)} className="w-full p-2 border border-gray-300 rounded disabled:bg-gray-50 disabled:text-gray-500" disabled={!can(adminPermissions, 5, 3)} />
-                                </td>
-                                <td className="p-2">
-                                  <select value={field.type} onChange={(e) => updateField(index, "type", e.target.value)} className="w-full p-2 border border-gray-300 rounded bg-white disabled:bg-gray-50 disabled:text-gray-500" disabled={!can(adminPermissions, 5, 3)}>
-                                    <option value="text">テキスト</option>
-                                    <option value="number">数値</option>
-                                    <option value="date">日付</option>
-                                    <option value="select">選択肢</option>
-                                  </select>
-                                </td>
-                                <td className="p-2">
-                                  <input type="text" value={field.placeholder || ""} onChange={(e) => updateField(index, "placeholder", e.target.value)} className="w-full p-2 border border-gray-300 rounded disabled:bg-gray-50 disabled:text-gray-500" disabled={!can(adminPermissions, 5, 3) || field.type === "select" || field.type === "date"} />
-                                </td>
-                                <td className="p-2 text-center">
-                                  {/* DB未保存のローカル項目は削除権限なしでも削除可 */}
-                                  {(can(adminPermissions, 5, 4) || !uuidRegex.test(field.id)) && (
-                                    <button onClick={() => removeField(index)} className="text-gray-400 hover:text-red-500">
-                                      <Trash2 size={18} />
-                                    </button>
-                                  )}
-                                </td>
-                              </tr>
+                              <React.Fragment key={field.id}>
+                                <tr className="hover:bg-gray-50">
+                                  <td className="p-2">
+                                    <input type="text" value={field.label} onChange={(e) => updateField(index, "label", e.target.value)} className="w-full p-2 border border-gray-300 rounded disabled:bg-gray-50 disabled:text-gray-500" disabled={!can(adminPermissions, 5, 3)} />
+                                  </td>
+                                  <td className="p-2">
+                                    <select value={field.type} onChange={(e) => updateField(index, "type", e.target.value)} className="w-full p-2 border border-gray-300 rounded bg-white disabled:bg-gray-50 disabled:text-gray-500" disabled={!can(adminPermissions, 5, 3)}>
+                                      <option value="text">テキスト</option>
+                                      <option value="number">数値</option>
+                                      <option value="date">日付</option>
+                                      <option value="select">選択肢</option>
+                                    </select>
+                                  </td>
+                                  <td className="p-2">
+                                    <input type="text" value={field.placeholder || ""} onChange={(e) => updateField(index, "placeholder", e.target.value)} className="w-full p-2 border border-gray-300 rounded disabled:bg-gray-50 disabled:text-gray-500" disabled={!can(adminPermissions, 5, 3) || field.type === "select" || field.type === "date"} />
+                                  </td>
+                                  <td className="p-2 text-center">
+                                    <input
+                                      type="checkbox"
+                                      checked={!!field.isRequired}
+                                      onChange={(e) => updateField(index, "isRequired", e.target.checked)}
+                                      className="w-5 h-5 accent-blue-600 disabled:opacity-50 cursor-pointer"
+                                      disabled={!can(adminPermissions, 5, 3)}
+                                    />
+                                  </td>
+                                  <td className="p-2 text-center">
+                                    {/* DB未保存のローカル項目は削除権限なしでも削除可 */}
+                                    {(can(adminPermissions, 5, 4) || !uuidRegex.test(field.id)) && (
+                                      <button onClick={() => removeField(index)} className="text-gray-400 hover:text-red-500">
+                                        <Trash2 size={18} />
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                                {field.type === "select" && (
+                                  <tr>
+                                    <td colSpan={5} className="p-3 bg-gray-50 border-b border-gray-200">
+                                      <div className="flex gap-4">
+                                        <div className="w-1/2">
+                                          <label className="block text-xs font-medium text-gray-500 mb-1">選択肢を追加</label>
+                                          <SelectOptionAddForm onAdd={(text) => addSelectOption(index, text)} disabled={!can(adminPermissions, 5, 3)} />
+                                        </div>
+                                        <div className="w-1/2">
+                                          <label className="block text-xs font-medium text-gray-500 mb-1">選択肢一覧（上から順に表示）</label>
+                                          {(field.options || []).length === 0 ? (
+                                            <p className="text-xs text-gray-400 py-2">まだ選択肢がありません。左から追加してください。</p>
+                                          ) : (
+                                            <div className="space-y-1.5">
+                                              {(field.options || []).map((opt, optIndex) => (
+                                                <div key={optIndex} className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-2 py-1.5">
+                                                  <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center font-bold flex-shrink-0">{optIndex + 1}</span>
+                                                  <input
+                                                    type="text"
+                                                    value={opt}
+                                                    onChange={(e) => updateSelectOption(index, optIndex, e.target.value)}
+                                                    disabled={!can(adminPermissions, 5, 3)}
+                                                    className="flex-1 text-sm border border-transparent hover:border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:border-blue-400 disabled:bg-gray-50 disabled:text-gray-500"
+                                                  />
+                                                  <button onClick={() => moveSelectOption(index, optIndex, -1)} disabled={!can(adminPermissions, 5, 3) || optIndex === 0} className="text-gray-400 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-400"><ArrowUp size={14} /></button>
+                                                  <button onClick={() => moveSelectOption(index, optIndex, 1)} disabled={!can(adminPermissions, 5, 3) || optIndex === (field.options || []).length - 1} className="text-gray-400 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-400"><ArrowDown size={14} /></button>
+                                                  <button onClick={() => removeSelectOption(index, optIndex)} disabled={!can(adminPermissions, 5, 3)} className="text-gray-400 hover:text-red-500 disabled:opacity-30"><Trash2 size={14} /></button>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
                             ))}
                           </tbody>
                         </table>
@@ -1985,11 +2146,21 @@ const deleteCustomer = async (id) => {
             </div>
             <div className="flex justify-between items-center mb-6">
               <p className="text-gray-600">{contentTab === "video" ? "接客時に再生する動画コンテンツを管理します。" : "契約書の裏面に印刷するPDF資料を管理します。"}</p>
-              {can(adminPermissions, contentTab === "video" ? 6 : 7, 2) && (
-                <button onClick={() => openUploadModal()} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 flex items-center shadow-md">
-                  <Upload size={18} className="mr-2" /> 新規アップロード
-                </button>
-              )}
+              <div className="flex items-center gap-3">
+                {can(adminPermissions, contentTab === "video" ? 6 : 7, 3) && (
+                  <button
+                    onClick={async () => { setShowDeletedContentsModal(true); await fetchDeletedContents(); }}
+                    className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg font-medium hover:bg-gray-50 flex items-center"
+                  >
+                    <RotateCcw size={16} className="mr-1.5" /> 削除済み一覧
+                  </button>
+                )}
+                {can(adminPermissions, contentTab === "video" ? 6 : 7, 2) && (
+                  <button onClick={() => openUploadModal()} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 flex items-center shadow-md">
+                    <Upload size={18} className="mr-2" /> 新規アップロード
+                  </button>
+                )}
+              </div>
             </div>
             {contentTab === "video" ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -2035,7 +2206,7 @@ const deleteCustomer = async (id) => {
                       className="aspect-video bg-gray-100 border-b cursor-pointer transition-colors overflow-hidden relative"
                       onClick={async () => {
                         if (!doc.path) return;
-                        const { data } = await supabaseAdmin.storage.from("files").createSignedUrl(doc.path, 3600);
+                        const { data } = await supabase.storage.from("files").createSignedUrl(doc.path, 3600);
                         if (data?.signedUrl) {
                           const res = await fetch(data.signedUrl);
                           const blob = await res.blob();
@@ -2138,18 +2309,83 @@ const deleteCustomer = async (id) => {
             )}
 
             {/* 削除確認モーダル */}
-            {deleteConfirmId && (
+            {deleteConfirmId && (() => {
+              const referencingFlows = flows.filter((flow) => {
+                if (contentTab === "video") {
+                  return (flow.steps || []).some((step) => (step.videoIds || []).includes(deleteConfirmId));
+                }
+                return (flow.attachmentIds || []).includes(deleteConfirmId);
+              });
+              return (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
                   <h3 className="text-lg font-bold text-gray-800 mb-2">削除の確認</h3>
-                  <p className="text-gray-600 mb-6">
-                    {contentTab === "video" ? "この動画を削除してもよろしいですか？" : "このドキュメントを削除してもよろしいですか？"}<br />
-                    <span className="text-sm text-red-500">この操作は取り消せません。</span>
+                  <p className="text-gray-600 mb-4">
+                    {contentTab === "video" ? "この動画を削除してもよろしいですか？" : "このドキュメントを削除してもよろしいですか？"}
                   </p>
+                  {referencingFlows.length > 0 && (
+                    <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+                      <p className="text-sm font-semibold text-amber-800 mb-1.5 flex items-center">
+                        <AlertTriangle size={16} className="mr-1.5 flex-shrink-0" />
+                        以下のフローで使用されています
+                      </p>
+                      <ul className="text-sm text-amber-700 space-y-1 pl-1">
+                        {referencingFlows.map((f) => (
+                          <li key={f.id} className="flex items-center">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-2 flex-shrink-0" />
+                            {f.name}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-xs text-amber-600 mt-2">
+                        削除するとこれらのフローの選択肢から外れます。過去の契約履歴への影響はありません。
+                      </p>
+                    </div>
+                  )}
+                  <p className="text-sm text-gray-500 mb-6">削除後は「削除済み一覧」から復元できます。</p>
                   <div className="flex justify-end space-x-3">
                     <button onClick={() => setDeleteConfirmId(null)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 font-medium">キャンセル</button>
                     {can(adminPermissions, contentTab === "video" ? 6 : 7, 4) && (
                       <button onClick={() => deleteContent(deleteConfirmId)} className="px-6 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700">削除する</button>
+                    )}
+                  </div>
+                </div>
+              </div>
+              );
+            })()}
+
+            {/* 削除済みアイテム復元モーダル */}
+            {showDeletedContentsModal && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+                  <div className="p-6 border-b flex justify-between items-center">
+                    <h3 className="text-xl font-bold text-gray-800">削除済み{contentTab === "video" ? "動画" : "ドキュメント"}一覧</h3>
+                    <button onClick={() => setShowDeletedContentsModal(false)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-6">
+                    {deletedContentsLoading ? (
+                      <p className="text-center text-gray-400 py-8">読み込み中...</p>
+                    ) : deletedContents.length === 0 ? (
+                      <p className="text-center text-gray-400 py-8">削除済みの{contentTab === "video" ? "動画" : "ドキュメント"}はありません。</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {deletedContents.map((item) => (
+                          <div key={item.id} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-gray-800 truncate">{item.name}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">削除日時: {item.deleted_at ? new Date(item.deleted_at).toLocaleString("ja-JP") : "不明"}</p>
+                            </div>
+                            {can(adminPermissions, contentTab === "video" ? 6 : 7, 3) && (
+                              <button
+                                onClick={() => restoreContent(item.id)}
+                                className="ml-4 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg font-medium hover:bg-blue-700 flex items-center flex-shrink-0"
+                              >
+                                <RotateCcw size={14} className="mr-1" /> 復元
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -2207,7 +2443,6 @@ const deleteCustomer = async (id) => {
                   <tr>
                     <th className="px-5 py-3 font-semibold text-gray-600 border-b border-gray-200">フロー名</th>
                     <th className="px-5 py-3 font-semibold text-gray-600 border-b border-gray-200">契約書テンプレート</th>
-                    <th className="px-5 py-3 font-semibold text-gray-600 border-b border-gray-200 text-center">ステップ数</th>
                     <th className="px-5 py-3 font-semibold text-gray-600 border-b border-gray-200 text-center">添付資料</th>
                     <th className="px-5 py-3 font-semibold text-gray-600 border-b border-gray-200 text-right">操作</th>
                   </tr>
@@ -2220,12 +2455,11 @@ const deleteCustomer = async (id) => {
                     <tr key={flow.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-5 py-3 font-medium text-gray-800">{flow.name}</td>
                       <td className="px-5 py-3 text-gray-500">{staffTemplates.find((t) => t.id === flow.templateId)?.name || "未設定"}</td>
-                      <td className="px-5 py-3 text-center text-gray-600">{flow.steps.length}</td>
                       <td className="px-5 py-3 text-center text-gray-600">{(flow.attachmentIds || []).filter((id) => documentsList.some((doc) => doc.id === id)).length}</td>
                       <td className="px-5 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
                           {can(adminPermissions, 8, 3) && (
-                            <button onClick={() => openFlowModal(flow)} className="text-gray-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
+                            <button onClick={() => openFlowModal(flow)} className="text-gray-400 hover:text-blue-600 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 -960 960 960" fill="currentColor"><path d="M200-200h57l391-391-57-57-391 391v57Zm-80 80v-170l528-527q12-11 26.5-17t30.5-6q16 0 31 6t26 18l55 56q12 11 17.5 26t5.5 30q0 16-5.5 30.5T817-647L290-120H120Zm640-584-56-56 56 56Zm-141 85-28-29 57 57-29-28Z"/></svg></button>
                           )}
                           {can(adminPermissions, 8, 4) && (
                             <button onClick={() => deleteFlow(flow.id)} className="text-gray-400 hover:text-red-600 transition-colors"><Trash2 size={16} /></button>
@@ -2401,17 +2635,34 @@ const deleteCustomer = async (id) => {
         {/* 契約履歴 */}
         {activeTab === "history" && showHistory && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 min-h-[500px]">
-            <div className="p-6 border-b border-gray-100 flex flex-wrap justify-between items-center gap-3">
-              <h3 className="text-lg font-bold text-gray-800">契約履歴一覧</h3>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={signHistorySearch}
-                  onChange={(e) => setSignHistorySearch(e.target.value)}
-                  placeholder="お客様名・契約名で検索"
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 w-56"
-                />
-                <button onClick={fetchSignHistory} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-medium transition-colors">更新</button>
+            <div className="p-6 border-b border-gray-100">
+              <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+                <h3 className="text-lg font-bold text-gray-800">契約履歴一覧</h3>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={signHistorySearch}
+                    onChange={(e) => setSignHistorySearch(e.target.value)}
+                    placeholder="お客様名・契約名で検索"
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 w-56"
+                  />
+                  <button onClick={fetchSignHistory} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-medium transition-colors">更新</button>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                {[
+                  { key: "all", label: "一覧" },
+                  { key: "incomplete", label: "未完了" },
+                  { key: "completed", label: "完了" },
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setHistoryStatusFilter(tab.key)}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${historyStatusFilter === tab.key ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
             </div>
             {signHistoryLoading ? (
@@ -2425,12 +2676,15 @@ const deleteCustomer = async (id) => {
                       <th className="px-5 py-3 border-b border-gray-200">お客様名</th>
                       <th className="px-5 py-3 border-b border-gray-200">担当スタッフ</th>
                       <th className="px-5 py-3 border-b border-gray-200">契約日時</th>
+                      <th className="px-5 py-3 border-b border-gray-200">ステータス</th>
                       <th className="px-5 py-3 border-b border-gray-200 text-right">操作</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {signHistoryList
                       .filter((h) => {
+                        if (historyStatusFilter === "incomplete" && h.status === 3) return false;
+                        if (historyStatusFilter === "completed" && h.status !== 3) return false;
                         if (!signHistorySearch) return true;
                         const q = signHistorySearch.toLowerCase();
                         return (
@@ -2439,8 +2693,16 @@ const deleteCustomer = async (id) => {
                           (h.customers?.name_kana || "").toLowerCase().includes(q)
                         );
                       })
-                      .map((h) => (
-                        <tr key={h.id} className="hover:bg-gray-50 transition-colors">
+                      .map((h) => {
+                        const statusInfo = h.status === 1
+                          ? { label: "進行中", cls: "bg-yellow-100 text-yellow-700 border-yellow-200" }
+                          : h.status === 2
+                          ? { label: "要確認", cls: "bg-orange-100 text-orange-700 border-orange-200", rowBg: "bg-orange-50" }
+                          : h.status === 4
+                          ? { label: "事前受付完了", cls: "bg-teal-100 text-teal-700 border-teal-200", rowBg: "bg-teal-50" }
+                          : { label: "完了", cls: "bg-green-100 text-green-700 border-green-200" };
+                        return (
+                        <tr key={h.id} className={`${(h.status === 2 || h.status === 4) ? (h.status === 2 ? "bg-orange-50" : "bg-teal-50") : ""} hover:bg-gray-50 transition-colors`}>
                           <td className="px-5 py-3 font-medium text-gray-800">{h.contract_name || "—"}</td>
                           <td className="px-5 py-3 text-gray-700">
                             <span className="inline-flex items-center gap-1.5">
@@ -2454,6 +2716,11 @@ const deleteCustomer = async (id) => {
                           <td className="px-5 py-3 text-gray-500">{h.users?.name || "—"}</td>
                           <td className="px-5 py-3 text-gray-500 whitespace-nowrap">
                             {h.create_at ? new Date(h.create_at).toLocaleString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"}
+                          </td>
+                          <td className="px-5 py-3">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${statusInfo.cls}`}>
+                              {statusInfo.label}
+                            </span>
                           </td>
                           <td className="px-5 py-3 text-right">
                             <div className="flex items-center justify-end gap-2">
@@ -2473,9 +2740,10 @@ const deleteCustomer = async (id) => {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     {signHistoryList.length === 0 && (
-                      <tr><td colSpan={5} className="px-5 py-16 text-center text-gray-400">契約履歴がありません</td></tr>
+                      <tr><td colSpan={6} className="px-5 py-16 text-center text-gray-400">契約履歴がありません</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -2675,11 +2943,28 @@ const deleteCustomer = async (id) => {
             <div className="p-6 border-b flex justify-between items-center sticky top-0 bg-white z-10">
               <div>
                 <h3 className="text-xl font-bold text-gray-800">{signHistoryDetail.history.contract_name || "契約詳細"}</h3>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {signHistoryDetail.history.create_at
-                    ? new Date(signHistoryDetail.history.create_at).toLocaleString("ja-JP")
-                    : ""}
-                </p>
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="text-xs text-gray-400">
+                    {signHistoryDetail.history.create_at
+                      ? new Date(signHistoryDetail.history.create_at).toLocaleString("ja-JP")
+                      : ""}
+                  </p>
+                  {(() => {
+                    const s = signHistoryDetail.history.status;
+                    const info = s === 1
+                      ? { label: "進行中", cls: "bg-yellow-100 text-yellow-700 border-yellow-200" }
+                      : s === 2
+                      ? { label: "要確認", cls: "bg-orange-100 text-orange-700 border-orange-200" }
+                      : s === 4
+                      ? { label: "事前受付完了", cls: "bg-teal-100 text-teal-700 border-teal-200" }
+                      : { label: "完了", cls: "bg-green-100 text-green-700 border-green-200" };
+                    return (
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${info.cls}`}>
+                        {info.label}
+                      </span>
+                    );
+                  })()}
+                </div>
               </div>
               <button onClick={() => setSignHistoryDetail(null)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
             </div>

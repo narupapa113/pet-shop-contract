@@ -9,6 +9,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import CustomerServiceMode from "./pages/CustomerServiceMode";
 import CustomerRemoteMode from "./pages/CustomerRemoteMode";
 import OnetimeUrlPage from "./pages/OnetimeUrlPage";
+import IncompleteListPage from "./pages/IncompleteListPage";
 
 const INPUT_TYPE_TO_STR = { 1: "text", 2: "number", 3: "date", 4: "select" };
 const STEP_TYPE_STR = { 1: "VIDEO", 2: "CUSTOMER_INFO", 3: "SIGNATURE", 4: "STAFF_INPUT", 5: "CONTRACT_PREVIEW" };
@@ -29,7 +30,7 @@ const useAppData = () => {
 
   useEffect(() => {
     const loadData = async () => {
-      const { data: videosData } = await supabase.from("videos").select("*").order("create_at", { ascending: false });
+      const { data: videosData } = await supabase.from("videos").select("*").eq("is_deleted", false).order("create_at", { ascending: false });
       if (videosData && videosData.length > 0) {
         const videos = await Promise.all(
           videosData.map(async (v) => {
@@ -53,7 +54,7 @@ const useAppData = () => {
         setVideoPlaylist(videos);
       }
 
-      const { data: filesData } = await supabase.from("files").select("*").order("create_at", { ascending: false });
+      const { data: filesData } = await supabase.from("files").select("*").eq("is_deleted", false).order("create_at", { ascending: false });
       if (filesData) {
         setDocumentsList(filesData.map((f) => ({
           id: f.id,
@@ -100,6 +101,7 @@ const useAppData = () => {
               type: INPUT_TYPE_TO_STR[item.input_type] || "text",
               placeholder: item.placeholder || "",
               options: item.input_select || [],
+              isRequired: !!item.is_requaier,
             }));
             return { id: tpl.id, name: tpl.name, fields };
           }),
@@ -280,6 +282,19 @@ const AppRoutes = () => {
         element={
           <AuthGuard role="staff">
             <CustomerServiceMode onLogout={handleLogout} {...commonProps} />
+          </AuthGuard>
+        }
+      />
+      <Route
+        path="/service/incomplete"
+        element={
+          <AuthGuard role="staff">
+            <IncompleteListPage
+              onBack={() => navigate("/service", { replace: true })}
+              onResume={(item) => navigate("/service", { replace: true, state: { resumeItem: item } })}
+              flows={appData.flows}
+              staffTemplates={appData.staffTemplates}
+            />
           </AuthGuard>
         }
       />
