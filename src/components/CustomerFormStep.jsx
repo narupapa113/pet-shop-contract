@@ -177,43 +177,52 @@ const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemot
     );
   }
 
-  // --- 既存顧客情報表示モーダル（スタッフ向け） ---
+  // --- 既存顧客情報表示モーダル（スタッフ向け: 左右比較） ---
   if (dupPhase === "show_existing" && existingCustomer) {
     const c = existingCustomer;
+    const n = data;
+    const CompareRow = ({ label, existing, newVal }) => {
+      const isSame = (existing ?? "") === (newVal ?? "");
+      return (
+        <div className="grid grid-cols-2 gap-4 py-2.5 border-b border-gray-100">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-0.5">{label}</p>
+            <p className={`text-sm ${isSame ? "text-gray-600" : "text-gray-800 font-semibold"}`}>{existing || "―"}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-0.5">{label}</p>
+            <p className={`text-sm ${isSame ? "text-gray-600" : "text-blue-700 font-semibold"}`}>{newVal || "―"}</p>
+          </div>
+        </div>
+      );
+    };
     return (
       <>
         <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-md opacity-50 pointer-events-none select-none">
           <h2 className="text-2xl font-bold mb-6 text-gray-800">スタッフ確認</h2>
         </div>
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl p-6">
             <div className="flex items-center text-blue-600 mb-4">
               <Search size={24} className="mr-2" />
-              <h3 className="text-lg font-bold">既存顧客情報</h3>
+              <h3 className="text-lg font-bold">顧客情報の比較</h3>
             </div>
-            <div className="space-y-2 mb-6">
-              <div className="flex border-b border-gray-100 pb-2">
-                <span className="w-24 text-sm text-gray-500 flex-shrink-0">お名前</span>
-                <span className="text-sm font-medium text-gray-800">{c.name}</span>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="bg-gray-50 rounded-lg px-4 py-2 text-center">
+                <p className="text-xs font-bold text-gray-500">既存顧客情報</p>
               </div>
-              <div className="flex border-b border-gray-100 pb-2">
-                <span className="w-24 text-sm text-gray-500 flex-shrink-0">フリガナ</span>
-                <span className="text-sm text-gray-800">{c.name_kana || "―"}</span>
-              </div>
-              <div className="flex border-b border-gray-100 pb-2">
-                <span className="w-24 text-sm text-gray-500 flex-shrink-0">電話番号</span>
-                <span className="text-sm text-gray-800">{c.tell || "―"}</span>
-              </div>
-              <div className="flex border-b border-gray-100 pb-2">
-                <span className="w-24 text-sm text-gray-500 flex-shrink-0">メール</span>
-                <span className="text-sm text-gray-800">{c.mail || "―"}</span>
-              </div>
-              <div className="flex border-b border-gray-100 pb-2">
-                <span className="w-24 text-sm text-gray-500 flex-shrink-0">ご住所</span>
-                <span className="text-sm text-gray-800">{c.address || "―"}</span>
+              <div className="bg-blue-50 rounded-lg px-4 py-2 text-center">
+                <p className="text-xs font-bold text-blue-600">今回の入力</p>
               </div>
             </div>
-            <p className="text-sm font-semibold text-gray-700 mb-4 text-center">
+            <div className="border-t border-gray-200">
+              <CompareRow label="お名前" existing={c.name} newVal={n.name} />
+              <CompareRow label="フリガナ" existing={c.name_kana} newVal={n.nameKana} />
+              <CompareRow label="電話番号" existing={c.tell} newVal={n.phone} />
+              <CompareRow label="メール" existing={c.mail} newVal={n.email} />
+              <CompareRow label="ご住所" existing={c.address} newVal={n.address} />
+            </div>
+            <p className="text-sm font-semibold text-gray-700 mb-4 text-center mt-4">
               入力された内容で上書きしてもよろしいですか？<br />
               <span className="text-xs text-gray-500 font-normal">未入力の項目は既存の値が保持されます</span>
             </p>
