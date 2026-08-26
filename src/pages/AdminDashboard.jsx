@@ -1087,6 +1087,8 @@ const AdminDashboard = ({
   const [customerDeleteConfirmId, setCustomerDeleteConfirmId] = useState(null);
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [customerSearchResults, setCustomerSearchResults] = useState(null); // null = show all
+  const [customerHistoryModal, setCustomerHistoryModal] = useState(null); // { customer, history, loading, restoreId }
+  const [customerRestoreConfirmId, setCustomerRestoreConfirmId] = useState(null);
 
   const EMPTY_CUSTOMER = { name: "", name_kana: "", address: "", tell: "", mail: "", remarks1: "", remarks2: "", remarks3: "" };
 
@@ -1177,6 +1179,61 @@ const deleteCustomer = async (id) => {
     if (activeTab === "customers") fetchCustomers();
     if (activeTab === "remote") { fetchIssuedUrls(); fetchCustomers(); }
   }, [activeTab, fetchDashStats, fetchCustomers, fetchIssuedUrls]);
+
+  const openCustomerHistory = async (customer) => {
+    setCustomerHistoryModal({ customer, history: [], loading: true, restoreId: null });
+    const { data, error } = await supabase
+      .from("customers_history")
+      .select("*")
+      .eq("customer_id", customer.id)
+      .order("snapshot_at", { ascending: false });
+    if (!error) {
+      setCustomerHistoryModal({ customer, history: data || [], loading: false, restoreId: null });
+    } else {
+      setCustomerHistoryModal({ customer, history: [], loading: false, restoreId: null });
+    }
+  };
+
+  const restoreCustomerHistory = async (historyId) => {
+    const modal = customerHistoryModal;
+    if (!modal) return;
+    setCustomerHistoryModal({ ...modal, restoreId: historyId });
+    try {
+      const { data: hist, error: histErr } = await supabase
+        .from("customers_history")
+        .select("*")
+        .eq("id", historyId)
+        .maybeSingle();
+      if (histErr || !hist) { alert("履歴の取得に失敗しました"); return; }
+
+      const { error: updErr } = await supabase.from("customers").update({
+        name: hist.name,
+        name_kana: hist.name_kana,
+        tell: hist.tell,
+        mail: hist.mail,
+        address: hist.address,
+        remarks: hist.remarks,
+        remarks2: hist.remarks2,
+        remarks3: hist.remarks3,
+        last_enter_store_at: hist.last_enter_store_at,
+        update_at: new Date().toISOString(),
+      }).eq("id", hist.customer_id);
+      if (updErr) { alert("復元に失敗しました: " + updErr.message); return; }
+
+      await supabase.from("customers_history").update({ restored: true }).eq("id", historyId);
+      setCustomerHistoryModal(null);
+      setCustomerRestoreConfirmId(null);
+      if (customerSearchQuery.trim()) {
+        await searchCustomers();
+      } else {
+        await fetchCustomers();
+      }
+    } catch (err) {
+      alert("復元に失敗しました: " + (err.message || JSON.stringify(err)));
+    } finally {
+      setCustomerHistoryModal((prev) => prev ? { ...prev, restoreId: null } : prev);
+    }
+  };
 
   // --- 契約履歴 ---
   const [signHistoryList, setSignHistoryList] = useState([]);
@@ -2819,6 +2876,10 @@ const deleteCustomer = async (id) => {
                               onClick={() => setCustomerModal({ mode: "detail", data: customer })}
                               className="px-2 py-1 text-xs border border-gray-300 rounded text-gray-600 hover:bg-gray-50 font-medium"
                             >詳細</button>
+                            <button
+                              onClick={() => openCustomerHistory(customer)}
+                              className="px-2 py-1 text-xs border border-gray-300 rounded text-gray-600 hover:bg-gray-50 font-medium flex items-center gap-1"
+                            ><History size={11} /> 履歴</button>
                             {can(adminPermissions, 4, 3) && (
                               <button
                                 onClick={() => {
@@ -3354,6 +3415,113 @@ const deleteCustomer = async (id) => {
           </div>
         </div>
       )}
+
+      {/* 顧客変更履歴モーダル */}
+      {customerHistoryModal && (() => {
+        const m = customerHistoryModal;
+        const fields = [
+          { key: "name", label: "名前" },
+          { key: "name_kana", label: "フリガナ" },
+          { key: "tell", label: "電話番号" },
+          { key: "mail", label: "メールアドレス" },
+          { key: "address", label: "住所" },
+          { key: "remarks", label: "備考1" },
+          { key: "remarks2", label: "備考2" },
+          { key: "remarks3", label: "備考3" },
+        ];
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+              <div className="p-6 border-b flex justify-between items-center">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-800">変更履歴</h3>
+                  <p className="text-sm text-gray-500 mt-1">{m.customer.name || "—"} の更新履歴</p>
+                </div>
+                <button onClick={() => setCustomerHistoryModal(null)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6">
+                {m.loading ? (
+                  <p className="text-center text-gray-400 py-8">読み込み中...</p>
+                ) : m.history.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                    <History size={36} className="mb-3 opacity-30" />
+                    <p className="text-sm">変更履歴はありません</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* 現在の情報 */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <p className="text-xs font-bold text-blue-700 mb-3">現在の情報</p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                        {fields.map(({ key, label }) => (
+                          <div key={key} className="flex">
+                            <span className="w-20 text-xs text-gray-500 flex-shrink-0">{label}</span>
+                            <span className="text-sm text-gray-800">{m.customer[key] || "—"}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {/* 履歴一覧 */}
+                    {m.history.map((h, idx) => (
+                      <div key={h.id} className={`border rounded-lg p-4 ${h.restored ? "bg-gray-50 border-gray-200" : "bg-white border-gray-200"}`}>
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-gray-500">履歴 {m.history.length - idx}</span>
+                            <span className="text-xs text-gray-400">{new Date(h.snapshot_at).toLocaleString("ja-JP")}</span>
+                            {h.restored && <span className="px-1.5 py-0.5 text-[10px] font-medium bg-gray-200 text-gray-500 rounded">復元済み</span>}
+                          </div>
+                          <button
+                            onClick={() => setCustomerRestoreConfirmId(h.id)}
+                            disabled={m.restoreId === h.id}
+                            className="px-3 py-1 text-xs border border-blue-300 rounded text-blue-600 hover:bg-blue-50 font-medium disabled:opacity-50 flex items-center gap-1"
+                          >
+                            <RotateCcw size={11} />
+                            {m.restoreId === h.id ? "復元中..." : "この状態に復元"}
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                          {fields.map(({ key, label }) => (
+                            <div key={key} className="flex">
+                              <span className="w-20 text-xs text-gray-500 flex-shrink-0">{label}</span>
+                              <span className="text-sm text-gray-700">{h[key] || "—"}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 顧客履歴 復元確認モーダル */}
+      {customerRestoreConfirmId && customerHistoryModal && (() => {
+        const h = customerHistoryModal.history.find((r) => r.id === customerRestoreConfirmId);
+        const idx = h ? customerHistoryModal.history.indexOf(h) : -1;
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+              <h3 className="text-lg font-bold text-gray-800 mb-2">復元の確認</h3>
+              <p className="text-gray-600 mb-1">
+                {idx >= 0 ? `履歴 ${customerHistoryModal.history.length - idx} の状態に復元しますか？` : "この履歴の状態に復元しますか？"}
+              </p>
+              {h && (
+                <p className="text-xs text-gray-400 mb-4">
+                  スナップショット日時: {new Date(h.snapshot_at).toLocaleString("ja-JP")}
+                </p>
+              )}
+              <p className="text-sm text-red-500 mb-6">現在の顧客情報が上書きされます。この操作は取り消せません。</p>
+              <div className="flex justify-end space-x-3">
+                <button onClick={() => setCustomerRestoreConfirmId(null)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 font-medium">キャンセル</button>
+                <button onClick={() => restoreCustomerHistory(customerRestoreConfirmId)} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700">復元する</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

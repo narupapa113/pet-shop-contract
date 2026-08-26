@@ -444,6 +444,7 @@ const CustomerServiceMode = ({
         let savedCustomerId = customerId;
 
         if (resolution?.mode === "overwrite" && resolution.existingCustomerId) {
+          try { await callEdgeFn("save-customer-history", { customerId: resolution.existingCustomerId }); } catch (e) { console.error("履歴保存エラー:", e); }
           const updateFields = {};
           if (customerData.name?.trim()) updateFields.name = customerData.name;
           if (customerData.nameKana?.trim()) updateFields.name_kana = customerData.nameKana;
@@ -517,6 +518,7 @@ const CustomerServiceMode = ({
         };
 
         if (newCustomerId) {
+          try { await callEdgeFn("save-customer-history", { customerId: newCustomerId }); } catch (e) { console.error("履歴保存エラー:", e); }
           const updateFields = {};
           if (customerData.name?.trim()) updateFields.name = customerData.name;
           if (customerData.nameKana?.trim()) updateFields.name_kana = customerData.nameKana;
