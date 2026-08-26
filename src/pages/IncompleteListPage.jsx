@@ -15,7 +15,7 @@ const fmtDate = (iso) => {
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 };
 
-const IncompleteListPage = ({ onBack, onResume, flows, staffTemplates }) => {
+const IncompleteListPage = ({ onBack, onResume, flows, staffTemplates, storeId }) => {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [mergeTarget, setMergeTarget] = useState(null);
@@ -26,14 +26,15 @@ const IncompleteListPage = ({ onBack, onResume, flows, staffTemplates }) => {
 
   const fetchList = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
+    let q = supabase
       .from("sign_history")
       .select("*, customers(name, name_kana, tell, mail, address, is_delete)")
-      .in("status", [1, 2, 4])
-      .order("create_at", { ascending: false });
+      .in("status", [1, 2, 4]);
+    if (storeId) q = q.eq("store_id", storeId);
+    const { data } = await q.order("create_at", { ascending: false });
     setList(data || []);
     setLoading(false);
-  }, []);
+  }, [storeId]);
 
   useEffect(() => { fetchList(); }, [fetchList]);
 

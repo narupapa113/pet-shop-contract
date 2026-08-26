@@ -133,7 +133,7 @@ const can = (adminPermissions, functionId, subId) => {
   return adminPermissions[functionId]?.has(subId) ?? false;
 };
 
-const UserManagement = ({ adminPermissions }) => {
+const UserManagement = ({ adminPermissions, storeId }) => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -247,7 +247,7 @@ const UserManagement = ({ adminPermissions }) => {
           "Authorization": `Bearer ${session?.access_token}`,
           "Apikey": import.meta.env.VITE_SUPABASE_ANON_KEY || "",
         },
-        body: JSON.stringify({ name, email, password, roleId: selectedRoleId }),
+        body: JSON.stringify({ name, email, password, roleId: selectedRoleId, storeId }),
       });
       const json = await res.json();
       if (!res.ok || json.error) throw new Error(json.error || "発行に失敗しました");

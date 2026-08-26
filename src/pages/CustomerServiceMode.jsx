@@ -17,6 +17,7 @@ const CustomerServiceMode = ({
   documentsList,
   flows,
   companyInfo,
+  storeId,
 }) => {
   const [selectedFlow, setSelectedFlow] = useState(null);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -48,12 +49,14 @@ const CustomerServiceMode = ({
   const [finishModalOpen, setFinishModalOpen] = useState(false);
 
   const fetchIncompleteCount = useCallback(async () => {
-    const { count } = await supabase
+    let q = supabase
       .from("sign_history")
       .select("*", { count: "exact", head: true })
       .in("status", [1, 2, 4]);
+    if (storeId) q = q.eq("store_id", storeId);
+    const { count } = await q;
     setIncompleteCount(count || 0);
-  }, []);
+  }, [storeId]);
 
   useEffect(() => { fetchIncompleteCount(); }, [fetchIncompleteCount]);
 
@@ -82,7 +85,7 @@ const CustomerServiceMode = ({
       if (existing?.id) {
         await supabase.from("flow_session_state").update(stateData).eq("id", existing.id);
       } else {
-        await supabase.from("flow_session_state").insert({ ...stateData, created_at: new Date().toISOString() });
+        await supabase.from("flow_session_state").insert({ ...stateData, store_id: storeId, created_at: new Date().toISOString() });
       }
     } catch (err) {
       console.error("セッション状態の保存に失敗:", err);
@@ -226,7 +229,7 @@ const CustomerServiceMode = ({
       const token = crypto.randomUUID() + "-" + crypto.randomUUID();
       const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
       const { error: insertError } = await supabase.from("completion_tokens").insert({
-        token, session_key: sessionKey, flow_id: flowId ?? "", expires_at: expiresAt,
+        token, session_key: sessionKey, flow_id: flowId ?? "", expires_at: expiresAt, store_id: storeId,
       });
       if (insertError) console.error("completion_tokens insert エラー:", insertError);
       setCompletionToken(token);
@@ -264,6 +267,7 @@ const CustomerServiceMode = ({
             contract_name: flow.name || null,
             status: 1,
             status_updated_at: new Date().toISOString(),
+            store_id: storeId,
           })
           .select("id")
           .maybeSingle();
@@ -565,6 +569,7 @@ const CustomerServiceMode = ({
               customerId: newCustomerId,
               videoIds: allWatchedVideoIds,
               signHistoryId: newSignHistoryId,
+              storeId: storeId,
             });
             saved = true;
           } catch { /* fall through */ }
@@ -598,6 +603,7 @@ const CustomerServiceMode = ({
                     video_id: allWatchedVideoIds,
                     status: 3,
                     status_updated_at: new Date().toISOString(),
+                    store_id: storeId,
                   })
                   .select("id")
                   .maybeSingle();

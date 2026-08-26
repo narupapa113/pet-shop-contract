@@ -110,6 +110,7 @@ const AdminDashboard = ({
   sessions,
   setSessions,
   adminPermissions,
+  storeId,
 }) => {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [selectedTemplateId, setSelectedTemplateId] = useState(staffTemplates[0]?.id);
@@ -211,7 +212,7 @@ const AdminDashboard = ({
     const defaultFields = DEFAULT_TEMPLATES[0].fields;
     const { data, error } = await supabase
       .from("contract_templates_header")
-      .insert({ name: "新しいテンプレート" })
+      .insert({ name: "新しいテンプレート", store_id: storeId })
       .select("id, name, create_at")
       .maybeSingle();
     if (error) { console.error("テンプレート追加エラー:", error); return; }
@@ -297,7 +298,8 @@ const AdminDashboard = ({
   const [previewingDoc, setPreviewingDoc] = useState(null); // { title, url }
 
   const fetchDocuments = useCallback(async () => {
-    const { data } = await supabase.from("files").select("*").eq("is_deleted", false).order("create_at", { ascending: false });
+    if (!storeId) return;
+    const { data } = await supabase.from("files").select("*").eq("is_deleted", false).eq("store_id", storeId).order("create_at", { ascending: false });
     if (data) {
       setDocumentsList(data.map((f) => {
         const thumbPath = f.path
@@ -314,14 +316,15 @@ const AdminDashboard = ({
         };
       }));
     }
-  }, [setDocumentsList]);
+  }, [setDocumentsList, storeId]);
 
   useEffect(() => {
     fetchDocuments();
   }, [fetchDocuments]);
 
   const fetchVideos = useCallback(async () => {
-    const { data } = await supabase.from("videos").select("*").eq("is_deleted", false).order("create_at", { ascending: false });
+    if (!storeId) return;
+    const { data } = await supabase.from("videos").select("*").eq("is_deleted", false).eq("store_id", storeId).order("create_at", { ascending: false });
     if (data) {
       const videos = await Promise.all(
         data.map(async (v) => {
@@ -347,7 +350,7 @@ const AdminDashboard = ({
       );
       setVideoPlaylist(videos);
     }
-  }, [setVideoPlaylist]);
+  }, [setVideoPlaylist, storeId]);
 
   useEffect(() => {
     fetchVideos();
@@ -491,6 +494,7 @@ const AdminDashboard = ({
             description: newContentData.description,
             path: filePath,
             video_time: videoTimeSecs,
+            store_id: storeId,
           });
           if (dbError) throw dbError;
         }
@@ -552,6 +556,7 @@ const AdminDashboard = ({
             path: filePath,
             page_count: pageCount,
             create_at: new Date().toISOString(),
+            store_id: storeId,
           });
           if (dbError) throw dbError;
           await fetchDocuments();
@@ -597,14 +602,14 @@ const AdminDashboard = ({
   const fetchDeletedContents = useCallback(async () => {
     setDeletedContentsLoading(true);
     if (contentTab === "video") {
-      const { data } = await supabase.from("videos").select("*").eq("is_deleted", true).order("deleted_at", { ascending: false });
+      const { data } = await supabase.from("videos").select("*").eq("is_deleted", true).eq("store_id", storeId).order("deleted_at", { ascending: false });
       setDeletedContents(data || []);
     } else {
-      const { data } = await supabase.from("files").select("*").eq("is_deleted", true).order("deleted_at", { ascending: false });
+      const { data } = await supabase.from("files").select("*").eq("is_deleted", true).eq("store_id", storeId).order("deleted_at", { ascending: false });
       setDeletedContents(data || []);
     }
     setDeletedContentsLoading(false);
-  }, [contentTab]);
+  }, [contentTab, storeId]);
 
   useEffect(() => { setDeletedContents([]); }, [contentTab]);
 
@@ -617,7 +622,8 @@ const AdminDashboard = ({
   const STEP_TYPE_STR = { 1: "VIDEO", 2: "CUSTOMER_INFO", 3: "SIGNATURE", 4: "STAFF_INPUT", 5: "CONTRACT_PREVIEW" };
 
   const fetchFlows = useCallback(async () => {
-    const { data } = await supabase.from("flow_header").select("*").order("create_at", { ascending: false });
+    if (!storeId) return;
+    const { data } = await supabase.from("flow_header").select("*").eq("store_id", storeId).order("create_at", { ascending: false });
     if (data && data.length > 0) {
       const parsed = await Promise.all(data.map(async (row) => {
         const { data: stepData } = await supabase.from("flow_step").select("*").eq("id", row.id).order("flow_step_no", { ascending: true });
@@ -631,7 +637,7 @@ const AdminDashboard = ({
       }));
       setFlows(parsed);
     }
-  }, [setFlows]);
+  }, [setFlows, storeId]);
 
   useEffect(() => { fetchFlows(); }, [fetchFlows]);
 
@@ -724,7 +730,7 @@ const AdminDashboard = ({
       if (error) { alert(`保存に失敗しました: ${error.message}`); return; }
       if (!updatedData) { alert("保存に失敗しました: レコードが見つかりません"); return; }
     } else {
-      const { data, error } = await supabase.from("flow_header").insert(headerPayload).select("id").maybeSingle();
+      const { data, error } = await supabase.from("flow_header").insert({ ...headerPayload, store_id: storeId }).select("id").maybeSingle();
       if (error) { alert(`保存に失敗しました: ${error.message}`); return; }
       flowId = data.id;
     }
@@ -771,13 +777,13 @@ const AdminDashboard = ({
       { data: videoRows },
       { data: documentRows },
     ] = await Promise.all([
-      supabase.from("onetime_url_manage").select("status, issue_at"),
-      supabase.from("sign_history").select("create_at"),
-      supabase.from("customers").select("create_at").neq("is_delete", true),
-      supabase.from("flow_header").select("id, name, type, create_at"),
-      supabase.from("contract_templates_header").select("id, name, create_at"),
-      supabase.from("videos").select("id, name, create_at").eq("is_deleted", false),
-      supabase.from("files").select("id, name, create_at").eq("is_deleted", false),
+      supabase.from("onetime_url_manage").select("status, issue_at").eq("store_id", storeId),
+      supabase.from("sign_history").select("create_at").eq("store_id", storeId),
+      supabase.from("customers").select("create_at").neq("is_delete", true).eq("store_id", storeId),
+      supabase.from("flow_header").select("id, name, type, create_at").eq("store_id", storeId),
+      supabase.from("contract_templates_header").select("id, name, create_at").eq("store_id", storeId),
+      supabase.from("videos").select("id, name, create_at").eq("is_deleted", false).eq("store_id", storeId),
+      supabase.from("files").select("id, name, create_at").eq("is_deleted", false).eq("store_id", storeId),
     ]);
 
     // 事前受付URL ステータス別件数
@@ -821,7 +827,7 @@ const AdminDashboard = ({
       totalDocuments: (documentRows || []).length,
     });
     setDashLoading(false);
-  }, []);
+  }, [storeId]);
 
   // --- 事前受付URL管理 ---
   const onetimeFlows = flows;
@@ -838,13 +844,15 @@ const AdminDashboard = ({
 
   const fetchIssuedUrls = useCallback(async () => {
     setIssuedUrlsLoading(true);
+    if (!storeId) return;
     const { data } = await supabase
       .from("onetime_url_manage")
       .select("*")
+      .eq("store_id", storeId)
       .order("issue_at", { ascending: false });
     if (data) setIssuedUrls(data);
     setIssuedUrlsLoading(false);
-  }, []);
+  }, [storeId]);
 
   const ONETIME_STATUS_LABEL = {
     1: { label: "未認証", color: "bg-gray-100 text-gray-600" },
@@ -868,6 +876,7 @@ const AdminDashboard = ({
       onetime_url: url,
       status: 1,
       customer_id: selectedCustomer?.id ?? null,
+      store_id: storeId,
     });
     if (error) { console.error(error); return alert("URLの発行に失敗しました"); }
     // メール送信（顧客が選択されてメールアドレスがある場合）
@@ -949,6 +958,7 @@ const AdminDashboard = ({
             status: 1,
             status_updated_at: new Date().toISOString(),
             onetime_url_id: row.id || null,
+            store_id: storeId,
           })
           .select("id")
           .maybeSingle();
@@ -1001,6 +1011,7 @@ const AdminDashboard = ({
                 video_id: [],
                 status: 3,
                 status_updated_at: new Date().toISOString(),
+                store_id: storeId,
               })
               .select("id")
               .maybeSingle();
@@ -1094,10 +1105,11 @@ const AdminDashboard = ({
 
   const fetchCustomers = useCallback(async () => {
     setCustomersLoading(true);
-    const { data } = await supabase.from("customers").select("*").neq("is_delete", true).order("create_at", { ascending: false });
+    if (!storeId) return;
+    const { data } = await supabase.from("customers").select("*").neq("is_delete", true).eq("store_id", storeId).order("create_at", { ascending: false });
     if (data) setCustomers(data);
     setCustomersLoading(false);
-  }, []);
+  }, [storeId]);
 
   const parseRemarks = (remarks) => {
     if (!remarks) return ["", "", ""];
@@ -1116,6 +1128,7 @@ const AdminDashboard = ({
       .select("*")
       .or(`name.ilike.%${q}%,name_kana.ilike.%${q}%,address.ilike.%${q}%,tell.ilike.%${q}%,mail.ilike.%${q}%,remarks.ilike.%${q}%,remarks2.ilike.%${q}%,remarks3.ilike.%${q}%`)
       .neq("is_delete", true)
+      .eq("store_id", storeId)
       .order("create_at", { ascending: false });
     setCustomerSearchResults(data ?? []);
   };
@@ -1139,6 +1152,7 @@ const AdminDashboard = ({
         address: d.address || null,
         tell: d.tell || null,
         mail: d.mail || null,
+        store_id: storeId,
         ...remarksPayload,
       });
       if (error) return alert("保存に失敗しました: " + error.message);
@@ -1330,13 +1344,15 @@ const deleteCustomer = async (id) => {
 
   const fetchSignHistory = useCallback(async () => {
     setSignHistoryLoading(true);
+    if (!storeId) return;
     const { data } = await supabase
       .from("sign_history")
       .select("*, customers(name, name_kana, is_delete), users(name)")
+      .eq("store_id", storeId)
       .order("create_at", { ascending: false });
     setSignHistoryList(data || []);
     setSignHistoryLoading(false);
-  }, []);
+  }, [storeId]);
 
   const openSignHistoryDetail = useCallback(async (history) => {
     const { data: inputs } = await supabase
@@ -1389,6 +1405,7 @@ const deleteCustomer = async (id) => {
       .from("customers")
       .select("id, name, name_kana, tell, mail, create_at")
       .eq("is_delete", true)
+      .eq("store_id", storeId)
       .order("create_at", { ascending: false });
     if (!error) setDeletedCustomers(data || []);
     setDeletedCustomersLoading(false);
@@ -1410,7 +1427,17 @@ const deleteCustomer = async (id) => {
     }
   }, [settingsTab]);
 
-  const handleSaveCompany = () => {
+  const handleSaveCompany = async () => {
+    if (!storeId) return;
+    const { error } = await supabase
+      .from("stores")
+      .update({ name: tempCompanyInfo.storeName, update_at: new Date().toISOString() })
+      .eq("id", storeId);
+    if (error) {
+      alert("保存に失敗しました: " + error.message);
+      return;
+    }
+    setCompanyInfo({ ...tempCompanyInfo });
     alert("会社情報を保存しました");
   };
 
@@ -2919,11 +2946,20 @@ const deleteCustomer = async (id) => {
                     <h3 className="text-lg font-bold text-gray-800 mb-6 border-b pb-4">会社基本情報</h3>
                     <div className="space-y-6 max-w-2xl">
                       <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-2">会社名 / 店舗名</label>
+                        <label className="block text-sm font-bold text-gray-700 mb-2">所属会社名</label>
                         <input
                           type="text"
-                          value={tempCompanyInfo.name}
-                          onChange={(e) => setTempCompanyInfo({ ...tempCompanyInfo, name: e.target.value })}
+                          value={companyInfo.name || ""}
+                          disabled
+                          className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2">所属店舗名</label>
+                        <input
+                          type="text"
+                          value={tempCompanyInfo.storeName || ""}
+                          onChange={(e) => setTempCompanyInfo({ ...tempCompanyInfo, storeName: e.target.value })}
                           disabled={!can(adminPermissions, 9, 3)}
                           className="w-full p-3 border border-gray-300 rounded-lg disabled:bg-gray-50 disabled:text-gray-500"
                         />
@@ -2939,7 +2975,7 @@ const deleteCustomer = async (id) => {
                   </div>
                 )}
                 {settingsTab === "roles" && <RoleManagement adminPermissions={adminPermissions} />}
-                {settingsTab === "users" && <UserManagement adminPermissions={adminPermissions} />}
+                {settingsTab === "users" && <UserManagement adminPermissions={adminPermissions} storeId={storeId} />}
                 {settingsTab === "other" && (
                   <div>
                     <h3 className="text-lg font-bold text-gray-800 mb-6 border-b pb-4">削除済み顧客一覧</h3>
