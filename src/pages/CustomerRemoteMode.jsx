@@ -130,8 +130,14 @@ const CustomerRemoteMode = ({ remoteSessionId, onComplete }) => {
     setWatchedVideoIds([]);
   }, [currentStepIndex]);
 
-  const currentStep = remoteSteps[currentStepIndex];
-  const templateName = staffTemplates.find((t) => t.id === flow.templateId)?.name;
+  
+  const handleCustomerChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setCustomerData((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }));
+  };
 
   const nextStep = () => {
     if (currentStepIndex < remoteSteps.length - 1) {
