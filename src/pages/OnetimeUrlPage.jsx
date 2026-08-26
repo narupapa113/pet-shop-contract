@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Smartphone, ShieldCheck, Loader } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { findCustomerByPhone } from "../lib/customer";
+import { loadFlowById, loadVideosByIds } from "../lib/flowData";
 import ProgressBar from "../components/ProgressBar";
 import VideoStep from "../components/VideoStep";
 import CustomerFormStep from "../components/CustomerFormStep";
@@ -148,10 +149,11 @@ const OtpAuthScreen = ({ onetimeId, sendTo, onVerified }) => {
 };
 
 // ---- メインページ ----
-const OnetimeUrlPage = ({ onetimeId, videoPlaylist, staffTemplates, documentsList, flows }) => {
+const OnetimeUrlPage = ({ onetimeId }) => {
   const [phase, setPhase] = useState("loading"); // loading | auth | flow | done | error
   const [urlRecord, setUrlRecord] = useState(null);
   const [flow, setFlow] = useState(null);
+  const [videoPlaylist, setVideoPlaylist] = useState([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [customerData, setCustomerData] = useState({
     name: "", nameKana: "", address: "", phone: "", email: "",
@@ -169,16 +171,20 @@ const OnetimeUrlPage = ({ onetimeId, videoPlaylist, staffTemplates, documentsLis
         .maybeSingle();
       if (!data) { setPhase("error"); return; }
       setUrlRecord(data);
-      const foundFlow = flows.find((f) => f.id === data.flow_id);
+      const foundFlow = await loadFlowById(data.flow_id);
       if (!foundFlow) { setPhase("error"); return; }
       setFlow(foundFlow);
+      // フロー内の全動画IDを収集して個別に取得
+      const allVideoIds = foundFlow.steps.flatMap((s) => s.videoIds || []);
+      const videos = await loadVideosByIds(allVideoIds);
+      setVideoPlaylist(videos);
       if (data.status >= 2) {
         setPhase("flow");
       } else {
         setPhase("auth");
       }
     })();
-  }, [onetimeId, flows]);
+  }, [onetimeId]);
 
   const handleVerified = async (phone) => {
     setCustomerData((prev) => ({ ...prev, phone }));

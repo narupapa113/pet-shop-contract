@@ -14,7 +14,7 @@ import IncompleteListPage from "./pages/IncompleteListPage";
 const INPUT_TYPE_TO_STR = { 1: "text", 2: "number", 3: "date", 4: "select" };
 const STEP_TYPE_STR = { 1: "VIDEO", 2: "CUSTOMER_INFO", 3: "SIGNATURE", 4: "STAFF_INPUT", 5: "CONTRACT_PREVIEW" };
 
-const useAppData = (storeId) => {
+const useAppData = () => {
   const [staffTemplates, setStaffTemplates] = useState(DEFAULT_TEMPLATES);
   const [videoPlaylist, setVideoPlaylist] = useState(DEFAULT_VIDEO_PLAYLIST);
   const [documentsList, setDocumentsList] = useState(DEFAULT_DOCUMENTS);
@@ -29,16 +29,15 @@ const useAppData = (storeId) => {
   const [sessions, setSessions] = useState([]);
   const [dataReady, setDataReady] = useState(false);
 
-  const loadData = useCallback(async () => {
-    if (!storeId) return;
+  const loadData = useCallback(async (sid) => {
+    if (!sid) return;
 
     // 会社・店舗情報を取得
     const { data: storeRow } = await supabase
       .from("stores")
       .select("id, name, company_id")
-      .eq("id", storeId)
+      .eq("id", sid)
       .maybeSingle();
-
     let companyName = "";
     if (storeRow?.company_id) {
       const { data: companyRow } = await supabase
@@ -59,7 +58,7 @@ const useAppData = (storeId) => {
       .from("videos")
       .select("*")
       .eq("is_deleted", false)
-      .eq("store_id", storeId)
+      .eq("store_id", sid)
       .order("create_at", { ascending: false });
     if (videosData && videosData.length > 0) {
       const videos = await Promise.all(
@@ -90,7 +89,7 @@ const useAppData = (storeId) => {
       .from("files")
       .select("*")
       .eq("is_deleted", false)
-      .eq("store_id", storeId)
+      .eq("store_id", sid)
       .order("create_at", { ascending: false });
     if (filesData) {
       setDocumentsList(filesData.map((f) => ({
@@ -106,7 +105,7 @@ const useAppData = (storeId) => {
     const { data: flowsData } = await supabase
       .from("flow_header")
       .select("*")
-      .eq("store_id", storeId)
+      .eq("store_id", sid)
       .order("create_at", { ascending: false });
     if (flowsData && flowsData.length > 0) {
       const parsed = await Promise.all(flowsData.map(async (row) => {
@@ -135,7 +134,7 @@ const useAppData = (storeId) => {
     const { data: templatesData } = await supabase
       .from("contract_templates_header")
       .select("id, name")
-      .eq("store_id", storeId)
+      .eq("store_id", sid)
       .order("create_at", { ascending: true });
     if (templatesData && templatesData.length > 0) {
       const templatesWithFields = await Promise.all(
@@ -159,13 +158,7 @@ const useAppData = (storeId) => {
     }
 
     setDataReady(true);
-  }, [storeId]);
-
-  useEffect(() => {
-    if (storeId) {
-      loadData();
-    }
-  }, [storeId, loadData]);
+  }, []);
 
   return {
     staffTemplates, setStaffTemplates,
@@ -176,6 +169,7 @@ const useAppData = (storeId) => {
     users, setUsers,
     sessions, setSessions,
     dataReady,
+    loadData,
   };
 };
 
@@ -317,7 +311,7 @@ const Loading = () => (
 
 const AppRoutes = () => {
   const [storeId, setStoreId] = useState(null);
-  const appData = useAppData(storeId);
+  const appData = useAppData();
   const navigate = useNavigate();
   const location = useLocation();
   const [adminPermissions, setAdminPermissions] = useState(undefined);
@@ -325,6 +319,10 @@ const AppRoutes = () => {
   const params = new URLSearchParams(location.search);
   const onetimeId = params.get("onetime");
   const sid = params.get("sid");
+
+  useEffect(() => {
+    if (storeId) appData.loadData(storeId);
+  }, [storeId]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -342,24 +340,23 @@ const AppRoutes = () => {
   };
 
   // ?onetime= または ?sid= クエリは認証不要でそのまま表示
+  // 認証前画面は store_id に依存せず、URLから直接DBへアクセスする
   if (onetimeId) {
-    return <OnetimeUrlPage onetimeId={onetimeId} {...commonProps} />;
+    return <OnetimeUrlPage onetimeId={onetimeId} />;
   }
   if (sid) {
-    const remoteSession = { id: sid, flowId: appData.flows[0]?.id, status: "unstarted" };
     return (
       <CustomerRemoteMode
-        remoteSession={remoteSession}
+        remoteSessionId={sid}
         onComplete={() => {
           alert("送信が完了しました。店舗スタッフにお知らせください。");
-          navigate("/");
+          navigate("/", { replace: true });
         }}
-        {...commonProps}
       />
     );
   }
 
-  if (!appData.dataReady) return <Loading />;
+  const needsData = location.pathname.startsWith("/admin") || location.pathname.startsWith("/service");
 
   return (
     <Routes>
@@ -370,7 +367,7 @@ const AppRoutes = () => {
         path="/admin"
         element={
           <AuthGuard role="admin" onPermissionsLoaded={setAdminPermissions} onStoreIdLoaded={setStoreId}>
-            <AdminDashboard
+            {needsData && !appData.dataReady ? <Loading /> : <AdminDashboard
               onLogout={handleLogout}
               setStaffTemplates={appData.setStaffTemplates}
               setVideoPlaylist={appData.setVideoPlaylist}
@@ -384,7 +381,7 @@ const AppRoutes = () => {
               adminPermissions={adminPermissions}
               storeId={storeId}
               {...commonProps}
-            />
+            />}
           </AuthGuard>
         }
       />
@@ -392,7 +389,7 @@ const AppRoutes = () => {
         path="/service"
         element={
           <AuthGuard role="staff" onStoreIdLoaded={setStoreId}>
-            <CustomerServiceMode onLogout={handleLogout} {...commonProps} />
+            {needsData && !appData.dataReady ? <Loading /> : <CustomerServiceMode onLogout={handleLogout} {...commonProps} />}
           </AuthGuard>
         }
       />
@@ -400,13 +397,13 @@ const AppRoutes = () => {
         path="/service/incomplete"
         element={
           <AuthGuard role="staff" onStoreIdLoaded={setStoreId}>
-            <IncompleteListPage
+            {needsData && !appData.dataReady ? <Loading /> : <IncompleteListPage
               onBack={() => navigate("/service", { replace: true })}
               onResume={(item) => navigate("/service", { replace: true, state: { resumeItem: item } })}
               flows={appData.flows}
               staffTemplates={appData.staffTemplates}
               storeId={storeId}
-            />
+            />}
           </AuthGuard>
         }
       />
