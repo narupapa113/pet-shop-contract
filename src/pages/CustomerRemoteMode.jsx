@@ -16,6 +16,7 @@ const CustomerRemoteMode = ({
   documentsList,
   flows,
   companyInfo,
+  storeId,
 }) => {
   const flow = flows.find((f) => f.id === remoteSession.flowId) || flows[0];
   const remoteSteps = flow.steps.filter((s) => s.type !== "STAFF_INPUT");
@@ -54,6 +55,7 @@ const CustomerRemoteMode = ({
         status: 1,
         status_updated_at: new Date().toISOString(),
         onetime_url_id: remoteSession.id || null,
+        store_id: storeId || null,
       })
       .select("id")
       .maybeSingle()
@@ -114,6 +116,7 @@ const CustomerRemoteMode = ({
           tell: phone,
           mail: customerData.email || null,
           address: customerData.address || null,
+          store_id: storeId || null,
         })
         .select("id")
         .maybeSingle();
@@ -148,6 +151,7 @@ const CustomerRemoteMode = ({
                 status: finalStatus,
                 status_updated_at: nowIso,
                 onetime_url_id: remoteSession.id || null,
+                store_id: storeId || null,
               });
               if (historyError) console.error("sign_history 挿入エラー:", historyError);
             }

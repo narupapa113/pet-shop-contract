@@ -260,6 +260,7 @@ const OnetimeUrlPage = ({ onetimeId, videoPlaylist, staffTemplates, documentsLis
           tell: customerData.phone || null,
           mail: customerData.email || null,
           address: customerData.address || null,
+          store_id: urlRecord?.store_id || null,
         })
         .select("id")
         .maybeSingle();
@@ -292,6 +293,7 @@ const OnetimeUrlPage = ({ onetimeId, videoPlaylist, staffTemplates, documentsLis
               status: finalStatus,
               status_updated_at: new Date().toISOString(),
               onetime_url_id: onetimeId,
+              store_id: urlRecord?.store_id || null,
             });
           } catch (err) {
             console.error("sign_history 作成エラー:", err);

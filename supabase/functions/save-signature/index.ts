@@ -17,7 +17,7 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { completionToken, signatureDataUrl, contractId, contractName, customerId, videoIds, status, signHistoryId } =
+    const { completionToken, signatureDataUrl, contractId, contractName, customerId, videoIds, status, signHistoryId, storeId } =
       await req.json();
 
     if (!completionToken || !signatureDataUrl) {
@@ -86,6 +86,7 @@ Deno.serve(async (req: Request) => {
         video_id: Array.isArray(videoIds) ? videoIds : [],
         status: finalStatus,
         status_updated_at: nowIso,
+        store_id: storeId ?? null,
       });
 
       if (historyError) {
