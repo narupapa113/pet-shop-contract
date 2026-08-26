@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { findCustomerByPhone } from "../lib/customer";
-import { Inbox, ChevronRight, ArrowLeft, Pause } from "lucide-react";
+import { Inbox, ChevronRight, ArrowLeft, Pause, CircleCheck as CheckCircle } from "lucide-react";
 import ProgressBar from "../components/ProgressBar";
 import VideoStep from "../components/VideoStep";
 import CustomerFormStep from "../components/CustomerFormStep";
@@ -45,6 +45,7 @@ const CustomerServiceMode = ({
   const navigate = useNavigate();
   const location = useLocation();
   const [incompleteCount, setIncompleteCount] = useState(0);
+  const [finishModalOpen, setFinishModalOpen] = useState(false);
 
   const fetchIncompleteCount = useCallback(async () => {
     const { count } = await supabase
@@ -636,8 +637,38 @@ const CustomerServiceMode = ({
       const { error: cleanErr } = await supabase.from("flow_session_state").delete().eq("sign_history_id", signHistoryId);
       if (cleanErr) console.error("flow_session_state クリーンアップエラー:", cleanErr);
     }
-    setSelectedFlow(null);
+    // setSelectedFlow(null);
+    setFinishModalOpen(true);
     fetchIncompleteCount();
+  };
+
+  const resetForNextCustomer = () => {
+    setFinishModalOpen(false);
+    setSelectedFlow(null);
+    setSignHistoryId(null);
+    setResumeItem(null);
+    setSessionCreatedByThisSession(false);
+    setCustomerId(null);
+    setCustomerData({
+      name: "",
+      nameKana: "",
+      address: "",
+      phone: "",
+      email: "",
+      checkVideo: false,
+      checkTerms: false,
+    });
+    setSignatureImage(null);
+    setStaffFields([]);
+    setStaffRemarks(["", "", ""]);
+    setWatchedVideosByStep({});
+    setCompletionToken(null);
+    setCustomerResolution(null);
+  };
+
+  const handleFinishLogout = () => {
+    setFinishModalOpen(false);
+    onLogout();
   };
 
   const templateName = staffTemplates.find((t) => t.id === selectedFlow.templateId)?.name;
@@ -802,6 +833,32 @@ const CustomerServiceMode = ({
         )}
         {renderStepContent()}
       </div>
+
+      {finishModalOpen && (
+        <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-8 text-center">
+            <div className="flex justify-center mb-4">
+              <CheckCircle size={56} className="text-green-500" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">接客が終了しました</h2>
+            <p className="text-sm text-gray-500 mb-6">次の操作を選択してください</p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={resetForNextCustomer}
+                className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors"
+              >
+                メニューに戻る
+              </button>
+              <button
+                onClick={handleFinishLogout}
+                className="w-full px-6 py-3 border border-gray-300 text-gray-700 rounded-lg font-bold hover:bg-gray-100 transition-colors"
+              >
+                ログアウトする
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
