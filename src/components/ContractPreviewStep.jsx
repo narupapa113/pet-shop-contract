@@ -111,6 +111,7 @@ const ContractPreviewStep = ({
   documentsList,
   attachmentIds,
   isRemote = false,
+  hideEditButton = false,
 }) => {
   const currentDate = new Date().toLocaleDateString("ja-JP", {
     year: "numeric",
@@ -227,12 +228,14 @@ const ContractPreviewStep = ({
       <div className="w-full max-w-4xl mb-6 flex justify-between items-center print:hidden">
         <h2 className="text-xl font-bold text-gray-800">契約内容の確認</h2>
         <div className="flex space-x-4">
-          <button
-            onClick={onPrev}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-white bg-white"
-          >
-            修正する
-          </button>
+          {!hideEditButton && (
+            <button
+              onClick={onPrev}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-white bg-white"
+            >
+              修正する
+            </button>
+          )}
           {!isRemote && (
             <button
               onClick={generateMergedPdf}
