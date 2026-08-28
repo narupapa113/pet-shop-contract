@@ -717,6 +717,7 @@ const CustomerServiceMode = ({
             onChange={handleCustomerChange}
             onNext={handleCustomerNext}
             onPrev={prevStep}
+            sessionCustomerId={customerId}
           />
         );
       case "SIGNATURE":
