@@ -174,8 +174,8 @@ const UserManagement = ({ adminPermissions, storeId }) => {
     setLoading(true);
     try {
       const [{ data: adminsData }, { data: usersData }, { data: authList }] = await Promise.all([
-        supabase.from("admins").select("id, name, create_at, auth_id"),
-        supabase.from("users").select("id, name, create_at"),
+        supabase.from("admins").select("id, name, create_at, auth_id").contains("store_id", [storeId]),
+        supabase.from("users").select("id, name, create_at").eq("store_id", storeId),
         supabase.auth.admin.listUsers({ perPage: 1000 }),
       ]);
 
@@ -193,7 +193,7 @@ const UserManagement = ({ adminPermissions, storeId }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [storeId]);
 
   useEffect(() => { fetchUsers(); fetchRoles(); }, [fetchUsers, fetchRoles]);
 
