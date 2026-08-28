@@ -900,7 +900,7 @@ const AdminDashboard = ({
   const deleteOnetimeUrl = async (id) => {
     if (!can(adminPermissions, 2, 4)) return;
     try {
-      const resp = await fetch("/.netlify/functions/delete-onetime-url", {
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-onetime-url`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
