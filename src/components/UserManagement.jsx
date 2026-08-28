@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Plus, X, User, Shield, Trash2 } from "lucide-react";
+import { Plus, X, User, Shield, Trash2, Pencil } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 // PERMISSION_MATRIX は RoleManagement.jsx でも共用するためエクスポート
@@ -101,6 +101,7 @@ export const PERMISSION_MATRIX = [
     perms: [
       { key: "view", label: "閲覧", subDbId: 1 },
       { key: "create", label: "新規追加", subDbId: 2 },
+      { key: "edit", label: "編集", subDbId: 3 },
       { key: "delete", label: "削除", subDbId: 4 },
     ],
   },
@@ -153,6 +154,12 @@ const UserManagement = ({ adminPermissions, storeId }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [selectedRoleId, setSelectedRoleId] = useState("");
+
+  // 編集モーダル用 state
+  const [editTarget, setEditTarget] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState("");
 
   const fetchRoles = useCallback(async () => {
     const { data } = await supabase
@@ -260,6 +267,36 @@ const UserManagement = ({ adminPermissions, storeId }) => {
     }
   };
 
+  const openEditModal = (user) => {
+    setEditTarget(user);
+    setEditName(user.name || "");
+    setEditError("");
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    if (!can(adminPermissions, 10, 3)) return;
+    const trimmed = editName.trim();
+    if (!trimmed) { setEditError("名前を入力してください"); return; }
+    setEditSaving(true);
+    setEditError("");
+    try {
+      const now = new Date().toISOString();
+      const table = editTarget.role === "admin" ? "admins" : "users";
+      const { error: updErr } = await supabase
+        .from(table)
+        .update({ name: trimmed, update_at: now })
+        .eq("id", editTarget.id);
+      if (updErr) throw new Error(updErr.message);
+      setEditTarget(null);
+      await fetchUsers();
+    } catch (err) {
+      setEditError(err.message);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   const formatDate = (iso) => {
     if (!iso) return "—";
     return new Date(iso).toLocaleDateString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit" });
@@ -298,7 +335,7 @@ const UserManagement = ({ adminPermissions, storeId }) => {
                 <th className="text-left py-3 px-4 font-semibold text-gray-600">メールアドレス</th>
                 <th className="text-left py-3 px-4 font-semibold text-gray-600">役割</th>
                 <th className="text-left py-3 px-4 font-semibold text-gray-600">登録日</th>
-                <th className="py-3 px-4 font-semibold text-gray-600 w-16"></th>
+                <th className="py-3 px-4 font-semibold text-gray-600 w-24"></th>
               </tr>
             </thead>
             <tbody>
@@ -317,15 +354,26 @@ const UserManagement = ({ adminPermissions, storeId }) => {
                     </td>
                     <td className="py-3 px-4 text-gray-500">{formatDate(u.create_at)}</td>
                     <td className="py-3 px-4 text-center">
-                      {u.id !== currentUserId && can(adminPermissions, 10, 4) && (
-                        <button
-                          onClick={() => { setDeleteTarget(u); setDeleteError(""); }}
-                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                          title="削除"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      )}
+                      <div className="flex items-center justify-center gap-1">
+                        {can(adminPermissions, 10, 3) && (
+                          <button
+                            onClick={() => openEditModal(u)}
+                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="名前編集"
+                          >
+                            <Pencil size={15} />
+                          </button>
+                        )}
+                        {u.id !== currentUserId && can(adminPermissions, 10, 4) && (
+                          <button
+                            onClick={() => { setDeleteTarget(u); setDeleteError(""); }}
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            title="削除"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -375,6 +423,52 @@ const UserManagement = ({ adminPermissions, storeId }) => {
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 名前編集モーダル */}
+      {editTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="p-6 border-b flex justify-between items-center">
+              <h3 className="text-lg font-bold text-gray-800">アカウント名の編集</h3>
+              <button onClick={() => setEditTarget(null)} className="text-gray-400 hover:text-gray-600" disabled={editSaving}>
+                <X size={22} />
+              </button>
+            </div>
+            <form onSubmit={handleEditSubmit} className="p-6 space-y-4">
+              {editError && (
+                <div className="bg-red-50 border border-red-200 text-red-600 rounded-lg px-4 py-3 text-sm">{editError}</div>
+              )}
+              <div className="bg-gray-50 rounded-lg px-4 py-3 text-sm text-gray-600">
+                <p>メールアドレス: <span className="font-medium text-gray-800">{editTarget.email || "—"}</span></p>
+                <p>役割: <span className="font-medium text-gray-800">{getRoleName(editTarget)}</span></p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">名前 <span className="text-red-500">*</span></label>
+                <input
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                  placeholder="例：山田 太郎"
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setEditTarget(null)}
+                  className="px-5 py-2.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 font-medium text-sm"
+                  disabled={editSaving}
+                >
+                  キャンセル
+                </button>
+                <button type="submit" disabled={editSaving}
+                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg font-bold text-sm shadow-md transition-colors"
+                >
+                  {editSaving ? "保存中..." : "保存する"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
