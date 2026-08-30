@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Plus, X, User, Shield, Trash2 } from "lucide-react";
-import { supabase, supabaseAdmin } from "../lib/supabase";
+import { supabase } from "../lib/supabase";
 
 // PERMISSION_MATRIX は RoleManagement.jsx でも共用するためエクスポート
 export const PERMISSION_MATRIX = [
@@ -133,7 +133,7 @@ const can = (adminPermissions, functionId, subId) => {
   return adminPermissions[functionId]?.has(subId) ?? false;
 };
 
-const UserManagement = ({ adminPermissions }) => {
+const UserManagement = ({ adminPermissions, storeId }) => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -155,7 +155,7 @@ const UserManagement = ({ adminPermissions }) => {
   const [selectedRoleId, setSelectedRoleId] = useState("");
 
   const fetchRoles = useCallback(async () => {
-    const { data } = await supabaseAdmin
+    const { data } = await supabase
       .from("m_authority")
       .select("id, auth_name, has_permission")
       .order("has_permission", { ascending: false })
@@ -167,9 +167,9 @@ const UserManagement = ({ adminPermissions }) => {
     setLoading(true);
     try {
       const [{ data: adminsData }, { data: usersData }, { data: authList }] = await Promise.all([
-        supabaseAdmin.from("admins").select("id, name, create_at, auth_id"),
-        supabaseAdmin.from("users").select("id, name, create_at"),
-        supabaseAdmin.auth.admin.listUsers({ perPage: 1000 }),
+        supabase.from("admins").select("id, name, create_at, auth_id"),
+        supabase.from("users").select("id, name, create_at"),
+        supabase.auth.admin.listUsers({ perPage: 1000 }),
       ]);
 
       const authMap = {};
@@ -247,7 +247,7 @@ const UserManagement = ({ adminPermissions }) => {
           "Authorization": `Bearer ${session?.access_token}`,
           "Apikey": import.meta.env.VITE_SUPABASE_ANON_KEY || "",
         },
-        body: JSON.stringify({ name, email, password, roleId: selectedRoleId }),
+        body: JSON.stringify({ name, email, password, roleId: selectedRoleId, storeId }),
       });
       const json = await res.json();
       if (!res.ok || json.error) throw new Error(json.error || "発行に失敗しました");

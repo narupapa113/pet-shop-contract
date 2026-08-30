@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Plus, X, CreditCard as Edit2, ShieldCheck, ShieldOff } from "lucide-react";
-import { supabaseAdmin } from "../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { PERMISSION_MATRIX } from "./UserManagement";
 
 const initPermissions = () => {
@@ -93,7 +93,7 @@ const RoleManagement = ({ adminPermissions }) => {
 
   const fetchRoles = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabaseAdmin
+    const { data } = await supabase
       .from("m_authority")
       .select("id, auth_name, has_permission, create_at")
       .order("has_permission", { ascending: false })
@@ -106,7 +106,7 @@ const RoleManagement = ({ adminPermissions }) => {
 
   const openEditModal = async (role) => {
     if (role.has_permission) {
-      const { data } = await supabaseAdmin
+      const { data } = await supabase
         .from("authority_contents")
         .select("function_id, sub_id")
         .eq("id", role.id);
@@ -144,7 +144,7 @@ const RoleManagement = ({ adminPermissions }) => {
     setEditError("");
     try {
       // 1. 役割名を更新
-      const { error: nameErr } = await supabaseAdmin
+      const { error: nameErr } = await supabase
         .from("m_authority")
         .update({ auth_name: trimmedName, update_at: new Date().toISOString() })
         .eq("id", editingRole.id);
@@ -157,10 +157,10 @@ const RoleManagement = ({ adminPermissions }) => {
             .filter((p) => editPerms[f.id]?.[p.key])
             .map((p) => ({ id: editingRole.id, function_id: f.functionDbId, sub_id: p.subDbId, create_at: new Date().toISOString() }))
         );
-        const { error: delErr } = await supabaseAdmin.from("authority_contents").delete().eq("id", editingRole.id);
+        const { error: delErr } = await supabase.from("authority_contents").delete().eq("id", editingRole.id);
         if (delErr) throw new Error("権限削除に失敗しました: " + delErr.message);
         if (rows.length > 0) {
-          const { error: insErr } = await supabaseAdmin.from("authority_contents").insert(rows);
+          const { error: insErr } = await supabase.from("authority_contents").insert(rows);
           if (insErr) throw new Error("権限保存に失敗しました: " + insErr.message);
         }
       }
@@ -196,7 +196,7 @@ const RoleManagement = ({ adminPermissions }) => {
     setAddError("");
     try {
       const hasPermission = newHasPermission === "true";
-      const { data: newRole, error: roleErr } = await supabaseAdmin
+      const { data: newRole, error: roleErr } = await supabase
         .from("m_authority")
         .insert({ auth_name: newRoleName.trim(), has_permission: hasPermission })
         .select("id")
@@ -210,7 +210,7 @@ const RoleManagement = ({ adminPermissions }) => {
             .map((p) => ({ id: newRole.id, function_id: f.functionDbId, sub_id: p.subDbId, create_at: new Date().toISOString() }))
         );
         if (rows.length > 0) {
-          const { error: insErr } = await supabaseAdmin.from("authority_contents").insert(rows);
+          const { error: insErr } = await supabase.from("authority_contents").insert(rows);
           if (insErr) throw new Error("権限保存に失敗しました: " + insErr.message);
         }
       }

@@ -14,10 +14,11 @@ Deno.serve(async (req: Request) => {
     new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   try {
-    // roleId: m_authority.id (UUID)
-    const { name, email, password, roleId } = await req.json();
+    // roleId: m_authority.id (UUID), storeId: stores.id (UUID)
+    const { name, email, password, roleId, storeId } = await req.json();
 
     if (!name || !email || !password || !roleId) return json({ error: "必須項目が不足しています" }, 400);
+    if (!storeId) return json({ error: "店舗が選択されていません" }, 400);
     if (password.length < 6) return json({ error: "パスワードは6文字以上で入力してください" }, 400);
 
     const supabaseAdmin = createClient(
@@ -58,6 +59,7 @@ Deno.serve(async (req: Request) => {
         id: authUserId,
         name,
         auth_id: roleId,
+        store_id: [storeId],
         create_at: now,
       });
 
@@ -70,6 +72,7 @@ Deno.serve(async (req: Request) => {
       const { error: userErr } = await supabaseAdmin.from("users").insert({
         id: authUserId,
         name,
+        store_id: storeId,
         create_at: now,
       });
 

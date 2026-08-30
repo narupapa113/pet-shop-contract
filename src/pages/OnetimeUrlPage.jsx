@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Smartphone, ShieldCheck, Loader } from "lucide-react";
-import { supabase, supabaseAdmin } from "../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { findCustomerByPhone } from "../lib/customer";
+import { loadFlowById, loadVideosByIds } from "../lib/flowData";
 import ProgressBar from "../components/ProgressBar";
 import VideoStep from "../components/VideoStep";
 import CustomerFormStep from "../components/CustomerFormStep";
@@ -148,10 +149,11 @@ const OtpAuthScreen = ({ onetimeId, sendTo, onVerified }) => {
 };
 
 // ---- メインページ ----
-const OnetimeUrlPage = ({ onetimeId, videoPlaylist, staffTemplates, documentsList, flows }) => {
+const OnetimeUrlPage = ({ onetimeId }) => {
   const [phase, setPhase] = useState("loading"); // loading | auth | flow | done | error
   const [urlRecord, setUrlRecord] = useState(null);
   const [flow, setFlow] = useState(null);
+  const [videoPlaylist, setVideoPlaylist] = useState([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [customerData, setCustomerData] = useState({
     name: "", nameKana: "", address: "", phone: "", email: "",
@@ -169,16 +171,20 @@ const OnetimeUrlPage = ({ onetimeId, videoPlaylist, staffTemplates, documentsLis
         .maybeSingle();
       if (!data) { setPhase("error"); return; }
       setUrlRecord(data);
-      const foundFlow = flows.find((f) => f.id === data.flow_id);
+      const foundFlow = await loadFlowById(data.flow_id);
       if (!foundFlow) { setPhase("error"); return; }
       setFlow(foundFlow);
+      // フロー内の全動画IDを収集して個別に取得
+      const allVideoIds = foundFlow.steps.flatMap((s) => s.videoIds || []);
+      const videos = await loadVideosByIds(allVideoIds);
+      setVideoPlaylist(videos);
       if (data.status >= 2) {
         setPhase("flow");
       } else {
         setPhase("auth");
       }
     })();
-  }, [onetimeId, flows]);
+  }, [onetimeId]);
 
   const handleVerified = async (phone) => {
     setCustomerData((prev) => ({ ...prev, phone }));
@@ -260,6 +266,7 @@ const OnetimeUrlPage = ({ onetimeId, videoPlaylist, staffTemplates, documentsLis
           tell: customerData.phone || null,
           mail: customerData.email || null,
           address: customerData.address || null,
+          store_id: urlRecord?.store_id || null,
         })
         .select("id")
         .maybeSingle();
@@ -285,13 +292,14 @@ const OnetimeUrlPage = ({ onetimeId, videoPlaylist, staffTemplates, documentsLis
         const contractIdValue = uuidRegex.test(flow.id) ? flow.id : null;
         if (contractIdValue) {
           try {
-            await supabaseAdmin.from("sign_history").insert({
+            await supabase.from("sign_history").insert({
               contract_id: contractIdValue,
               contract_name: flow.name || null,
               sign_customer_id: data.id,
               status: finalStatus,
               status_updated_at: new Date().toISOString(),
               onetime_url_id: onetimeId,
+              store_id: urlRecord?.store_id || null,
             });
           } catch (err) {
             console.error("sign_history 作成エラー:", err);

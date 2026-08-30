@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { supabase, supabaseAdmin } from "../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { findCustomerByPhone } from "../lib/customer";
 import { ArrowLeft, Clock, CircleCheck as CheckCircle, TriangleAlert as AlertTriangle, FileText, X } from "lucide-react";
 
@@ -15,7 +15,7 @@ const fmtDate = (iso) => {
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 };
 
-const IncompleteListPage = ({ onBack, onResume, flows, staffTemplates }) => {
+const IncompleteListPage = ({ onBack, onResume, flows, staffTemplates, storeId }) => {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [mergeTarget, setMergeTarget] = useState(null);
@@ -26,14 +26,15 @@ const IncompleteListPage = ({ onBack, onResume, flows, staffTemplates }) => {
 
   const fetchList = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabaseAdmin
+    let q = supabase
       .from("sign_history")
       .select("*, customers(name, name_kana, tell, mail, address, is_delete)")
-      .in("status", [1, 2, 4])
-      .order("create_at", { ascending: false });
+      .in("status", [1, 2, 4]);
+    if (storeId) q = q.eq("store_id", storeId);
+    const { data } = await q.order("create_at", { ascending: false });
     setList(data || []);
     setLoading(false);
-  }, []);
+  }, [storeId]);
 
   useEffect(() => { fetchList(); }, [fetchList]);
 
@@ -52,7 +53,7 @@ const IncompleteListPage = ({ onBack, onResume, flows, staffTemplates }) => {
     setMergeLoading(true);
     const phone = mergeTarget?.customers?.tell;
     if (phone) {
-      const existing = await findCustomerByPhone(supabaseAdmin, phone);
+      const existing = await findCustomerByPhone(supabase, phone);
       setExistingCustomer(existing);
     }
     setMergeLoading(false);
@@ -67,16 +68,16 @@ const IncompleteListPage = ({ onBack, onResume, flows, staffTemplates }) => {
     if (c?.name_kana) updateFields.name_kana = c.name_kana;
     if (c?.mail) updateFields.mail = c.mail;
     if (c?.address) updateFields.address = c.address;
-    await supabaseAdmin.from("customers").update(updateFields).eq("id", existingCustomer.id);
+    await supabase.from("customers").update(updateFields).eq("id", existingCustomer.id);
     // sign_history の顧客IDを既存顧客に切り替え、重複フラグを解消
-    await supabaseAdmin.from("sign_history").update({
+    await supabase.from("sign_history").update({
       sign_customer_id: existingCustomer.id,
       status: 4,
       status_updated_at: now,
     }).eq("id", mergeTarget.id);
     // 重複した新規顧客レコードを論理削除
     if (mergeTarget.sign_customer_id && mergeTarget.sign_customer_id !== existingCustomer.id) {
-      await supabaseAdmin.from("customers").update({ is_delete: true, update_at: now }).eq("id", mergeTarget.sign_customer_id);
+      await supabase.from("customers").update({ is_delete: true, update_at: now }).eq("id", mergeTarget.sign_customer_id);
     }
     setResumeItem({ ...mergeTarget, status: 4, sign_customer_id: existingCustomer.id });
     setMergeDone("merged");
@@ -85,7 +86,7 @@ const IncompleteListPage = ({ onBack, onResume, flows, staffTemplates }) => {
   const handleMergeNew = async () => {
     if (!mergeTarget) return;
     const now = new Date().toISOString();
-    await supabaseAdmin.from("sign_history").update({
+    await supabase.from("sign_history").update({
       status: 4,
       status_updated_at: now,
     }).eq("id", mergeTarget.id);

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { supabase, supabaseAdmin } from "../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { findCustomerByPhone } from "../lib/customer";
-import { Inbox, ChevronRight, ArrowLeft, Pause } from "lucide-react";
+import { Inbox, ChevronRight, ArrowLeft, Pause, CircleCheck as CheckCircle } from "lucide-react";
 import ProgressBar from "../components/ProgressBar";
 import VideoStep from "../components/VideoStep";
 import CustomerFormStep from "../components/CustomerFormStep";
@@ -17,6 +17,7 @@ const CustomerServiceMode = ({
   documentsList,
   flows,
   companyInfo,
+  storeId,
 }) => {
   const [selectedFlow, setSelectedFlow] = useState(null);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -45,14 +46,17 @@ const CustomerServiceMode = ({
   const navigate = useNavigate();
   const location = useLocation();
   const [incompleteCount, setIncompleteCount] = useState(0);
+  const [finishModalOpen, setFinishModalOpen] = useState(false);
 
   const fetchIncompleteCount = useCallback(async () => {
-    const { count } = await supabaseAdmin
+    let q = supabase
       .from("sign_history")
       .select("*", { count: "exact", head: true })
       .in("status", [1, 2, 4]);
+    if (storeId) q = q.eq("store_id", storeId);
+    const { count } = await q;
     setIncompleteCount(count || 0);
-  }, []);
+  }, [storeId]);
 
   useEffect(() => { fetchIncompleteCount(); }, [fetchIncompleteCount]);
 
@@ -73,15 +77,15 @@ const CustomerServiceMode = ({
       updated_at: new Date().toISOString(),
     };
     try {
-      const { data: existing } = await supabaseAdmin
+      const { data: existing } = await supabase
         .from("flow_session_state")
         .select("id")
         .eq("sign_history_id", signHistoryId)
         .maybeSingle();
       if (existing?.id) {
-        await supabaseAdmin.from("flow_session_state").update(stateData).eq("id", existing.id);
+        await supabase.from("flow_session_state").update(stateData).eq("id", existing.id);
       } else {
-        await supabaseAdmin.from("flow_session_state").insert({ ...stateData, created_at: new Date().toISOString() });
+        await supabase.from("flow_session_state").insert({ ...stateData, store_id: storeId, created_at: new Date().toISOString() });
       }
     } catch (err) {
       console.error("セッション状態の保存に失敗:", err);
@@ -114,7 +118,7 @@ const CustomerServiceMode = ({
     // 保存されたセッション状態を復元（status=1 進行中の場合）
     if (item.status === 1) {
       try {
-        const { data: savedState } = await supabaseAdmin
+        const { data: savedState } = await supabase
           .from("flow_session_state")
           .select("*")
           .eq("sign_history_id", item.id)
@@ -146,7 +150,7 @@ const CustomerServiceMode = ({
 
     // 顧客情報を復元（非同期・バックグラウンド）
     if (item.sign_customer_id) {
-      const { data: cust } = await supabaseAdmin
+      const { data: cust } = await supabase
         .from("customers")
         .select("name, name_kana, tell, mail, address")
         .eq("id", item.sign_customer_id)
@@ -199,7 +203,7 @@ const CustomerServiceMode = ({
         sessionKey, flowId: flowId ?? "", videoId, watchedSec, requiredSec,
       });
     } catch {
-      await supabaseAdmin.from("video_watch_sessions").upsert(
+      await supabase.from("video_watch_sessions").upsert(
         {
           session_key: sessionKey,
           flow_id: flowId ?? "",
@@ -224,8 +228,8 @@ const CustomerServiceMode = ({
     } catch {
       const token = crypto.randomUUID() + "-" + crypto.randomUUID();
       const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-      const { error: insertError } = await supabaseAdmin.from("completion_tokens").insert({
-        token, session_key: sessionKey, flow_id: flowId ?? "", expires_at: expiresAt,
+      const { error: insertError } = await supabase.from("completion_tokens").insert({
+        token, session_key: sessionKey, flow_id: flowId ?? "", expires_at: expiresAt, store_id: storeId,
       });
       if (insertError) console.error("completion_tokens insert エラー:", insertError);
       setCompletionToken(token);
@@ -256,13 +260,14 @@ const CustomerServiceMode = ({
     const contractIdValue = uuidRegex.test(flow.id) ? flow.id : null;
     if (contractIdValue) {
       try {
-        const { data: sh } = await supabaseAdmin
+        const { data: sh } = await supabase
           .from("sign_history")
           .insert({
             contract_id: contractIdValue,
             contract_name: flow.name || null,
             status: 1,
             status_updated_at: new Date().toISOString(),
+            store_id: storeId,
           })
           .select("id")
           .maybeSingle();
@@ -365,8 +370,8 @@ const CustomerServiceMode = ({
       if (window.confirm("メニュー選択に戻りますか？入力内容は破棄されます。")) {
         if (sessionCreatedByThisSession && signHistoryId) {
           try {
-            await supabaseAdmin.from("flow_session_state").delete().eq("sign_history_id", signHistoryId);
-            await supabaseAdmin.from("sign_history").delete().eq("id", signHistoryId);
+            await supabase.from("flow_session_state").delete().eq("sign_history_id", signHistoryId);
+            await supabase.from("sign_history").delete().eq("id", signHistoryId);
             fetchIncompleteCount();
           } catch (err) {
             console.error("sign_history 削除エラー:", err);
@@ -444,6 +449,7 @@ const CustomerServiceMode = ({
         let savedCustomerId = customerId;
 
         if (resolution?.mode === "overwrite" && resolution.existingCustomerId) {
+          try { await callEdgeFn("save-customer-history", { customerId: resolution.existingCustomerId }); } catch (e) { console.error("履歴保存エラー:", e); }
           const updateFields = {};
           if (customerData.name?.trim()) updateFields.name = customerData.name;
           if (customerData.nameKana?.trim()) updateFields.name_kana = customerData.nameKana;
@@ -517,6 +523,7 @@ const CustomerServiceMode = ({
         };
 
         if (newCustomerId) {
+          try { await callEdgeFn("save-customer-history", { customerId: newCustomerId }); } catch (e) { console.error("履歴保存エラー:", e); }
           const updateFields = {};
           if (customerData.name?.trim()) updateFields.name = customerData.name;
           if (customerData.nameKana?.trim()) updateFields.name_kana = customerData.nameKana;
@@ -562,6 +569,7 @@ const CustomerServiceMode = ({
               customerId: newCustomerId,
               videoIds: allWatchedVideoIds,
               signHistoryId: newSignHistoryId,
+              storeId: storeId,
             });
             saved = true;
           } catch { /* fall through */ }
@@ -569,12 +577,12 @@ const CustomerServiceMode = ({
         if (!saved) {
           const blob = await (await fetch(signatureImage)).blob();
           const filePath = `signatures/${Date.now()}.png`;
-          const { error: uploadError } = await supabaseAdmin.storage
+          const { error: uploadError } = await supabase.storage
             .from("signatures")
             .upload(filePath, blob, { contentType: "image/png" });
           if (!uploadError) {
             if (newSignHistoryId) {
-              await supabaseAdmin.from("sign_history").update({
+              await supabase.from("sign_history").update({
                 sign_customer_id: newCustomerId,
                 sign_path: filePath,
                 video_id: allWatchedVideoIds,
@@ -585,7 +593,7 @@ const CustomerServiceMode = ({
               const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
               const contractIdValue = uuidRegex.test(selectedFlow.id) ? selectedFlow.id : null;
               if (contractIdValue) {
-                const { data: signHistoryData } = await supabaseAdmin
+                const { data: signHistoryData } = await supabase
                   .from("sign_history")
                   .insert({
                     contract_id: contractIdValue,
@@ -595,6 +603,7 @@ const CustomerServiceMode = ({
                     video_id: allWatchedVideoIds,
                     status: 3,
                     status_updated_at: new Date().toISOString(),
+                    store_id: storeId,
                   })
                   .select("id")
                   .maybeSingle();
@@ -615,7 +624,7 @@ const CustomerServiceMode = ({
           create_at: now,
           update_at: now,
         }));
-        await supabaseAdmin.from("sign_input").insert(rows);
+        await supabase.from("sign_input").insert(rows);
       }
 
       // 4. customers.remarks に備考を保存
@@ -631,11 +640,41 @@ const CustomerServiceMode = ({
     }
     // 完了時はセッション状態をクリーンアップ
     if (signHistoryId) {
-      const { error: cleanErr } = await supabaseAdmin.from("flow_session_state").delete().eq("sign_history_id", signHistoryId);
+      const { error: cleanErr } = await supabase.from("flow_session_state").delete().eq("sign_history_id", signHistoryId);
       if (cleanErr) console.error("flow_session_state クリーンアップエラー:", cleanErr);
     }
-    setSelectedFlow(null);
+    // setSelectedFlow(null);
+    setFinishModalOpen(true);
     fetchIncompleteCount();
+  };
+
+  const resetForNextCustomer = () => {
+    setFinishModalOpen(false);
+    setSelectedFlow(null);
+    setSignHistoryId(null);
+    setResumeItem(null);
+    setSessionCreatedByThisSession(false);
+    setCustomerId(null);
+    setCustomerData({
+      name: "",
+      nameKana: "",
+      address: "",
+      phone: "",
+      email: "",
+      checkVideo: false,
+      checkTerms: false,
+    });
+    setSignatureImage(null);
+    setStaffFields([]);
+    setStaffRemarks(["", "", ""]);
+    setWatchedVideosByStep({});
+    setCompletionToken(null);
+    setCustomerResolution(null);
+  };
+
+  const handleFinishLogout = () => {
+    setFinishModalOpen(false);
+    onLogout();
   };
 
   const templateName = staffTemplates.find((t) => t.id === selectedFlow.templateId)?.name;
@@ -755,9 +794,9 @@ const CustomerServiceMode = ({
               if (!window.confirm("トップに戻りますか？入力中の内容は破棄されます。")) return;
               try {
                 if (sessionCreatedByThisSession && signHistoryId) {
-                  const { error: e1 } = await supabaseAdmin.from("flow_session_state").delete().eq("sign_history_id", signHistoryId);
+                  const { error: e1 } = await supabase.from("flow_session_state").delete().eq("sign_history_id", signHistoryId);
                   if (e1) console.error("flow_session_state 削除エラー:", e1);
-                  const { error: e2 } = await supabaseAdmin.from("sign_history").delete().eq("id", signHistoryId);
+                  const { error: e2 } = await supabase.from("sign_history").delete().eq("id", signHistoryId);
                   if (e2) console.error("sign_history 削除エラー:", e2);
                 }
               } catch (err) {
@@ -803,6 +842,32 @@ const CustomerServiceMode = ({
         )}
         {renderStepContent()}
       </div>
+
+      {finishModalOpen && (
+        <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-8 text-center">
+            <div className="flex justify-center mb-4">
+              <CheckCircle size={56} className="text-green-500" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">接客が終了しました</h2>
+            <p className="text-sm text-gray-500 mb-6">次の操作を選択してください</p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={resetForNextCustomer}
+                className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors"
+              >
+                メニューに戻る
+              </button>
+              <button
+                onClick={handleFinishLogout}
+                className="w-full px-6 py-3 border border-gray-300 text-gray-700 rounded-lg font-bold hover:bg-gray-100 transition-colors"
+              >
+                ログアウトする
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
