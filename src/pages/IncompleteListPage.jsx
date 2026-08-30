@@ -59,6 +59,24 @@ const IncompleteListPage = ({ onBack, onResume, flows, staffTemplates, storeId }
     setMergeLoading(false);
   };
 
+  const callEdgeFn = async (fnName, body) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = {
+      "Content-Type": "application/json",
+      "Apikey": import.meta.env.VITE_SUPABASE_ANON_KEY,
+    };
+    if (session?.access_token) {
+      headers["Authorization"] = `Bearer ${session.access_token}`;
+    }
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${fnName}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  };
+
   const handleMergeOverwrite = async () => {
     if (!mergeTarget || !existingCustomer) return;
     const c = mergeTarget.customers;
@@ -68,6 +86,7 @@ const IncompleteListPage = ({ onBack, onResume, flows, staffTemplates, storeId }
     if (c?.name_kana) updateFields.name_kana = c.name_kana;
     if (c?.mail) updateFields.mail = c.mail;
     if (c?.address) updateFields.address = c.address;
+    try { await callEdgeFn("save-customer-history", { customerId: existingCustomer.id }); } catch (e) { console.error("履歴保存エラー:", e); }
     await supabase.from("customers").update(updateFields).eq("id", existingCustomer.id);
     // sign_history の顧客IDを既存顧客に切り替え、重複フラグを解消
     await supabase.from("sign_history").update({
