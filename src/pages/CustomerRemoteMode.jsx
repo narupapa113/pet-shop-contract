@@ -187,14 +187,6 @@ const CustomerRemoteMode = ({ remoteSessionId, onComplete }) => {
     }
   };
 
-  const handleCustomerChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setCustomerData((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
-  };
-
   // 「送信する」押下時に一括INSERT
   const handleFinish = async () => {
     try {
