@@ -23,6 +23,13 @@ const IncompleteListPage = ({ onBack, onResume, flows, staffTemplates, storeId }
   const [mergeLoading, setMergeLoading] = useState(false);
   const [mergeDone, setMergeDone] = useState(null);
   const [resumeItem, setResumeItem] = useState(null);
+  const [currentStaffId, setCurrentStaffId] = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.id) setCurrentStaffId(session.user.id);
+    });
+  }, []);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -93,6 +100,7 @@ const IncompleteListPage = ({ onBack, onResume, flows, staffTemplates, storeId }
       sign_customer_id: existingCustomer.id,
       status: 4,
       status_updated_at: now,
+      support_stuff_id: currentStaffId,
     }).eq("id", mergeTarget.id);
     // 重複した新規顧客レコードを論理削除
     if (mergeTarget.sign_customer_id && mergeTarget.sign_customer_id !== existingCustomer.id) {
@@ -108,6 +116,7 @@ const IncompleteListPage = ({ onBack, onResume, flows, staffTemplates, storeId }
     await supabase.from("sign_history").update({
       status: 4,
       status_updated_at: now,
+      support_stuff_id: currentStaffId,
     }).eq("id", mergeTarget.id);
     setResumeItem({ ...mergeTarget, status: 4 });
     setMergeDone("new");

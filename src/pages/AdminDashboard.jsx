@@ -113,6 +113,13 @@ const AdminDashboard = ({
   storeId,
 }) => {
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [currentStaffId, setCurrentStaffId] = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.id) setCurrentStaffId(session.user.id);
+    });
+  }, []);
   const [selectedTemplateId, setSelectedTemplateId] = useState(staffTemplates[0]?.id);
   const [isSaved, setIsSaved] = useState(false);
 
@@ -959,6 +966,7 @@ const AdminDashboard = ({
             status_updated_at: new Date().toISOString(),
             onetime_url_id: row.id || null,
             store_id: storeId,
+            support_stuff_id: currentStaffId,
           })
           .select("id")
           .maybeSingle();
@@ -1012,6 +1020,7 @@ const AdminDashboard = ({
                 status: 3,
                 status_updated_at: new Date().toISOString(),
                 store_id: storeId,
+                support_stuff_id: currentStaffId,
               })
               .select("id")
               .maybeSingle();
@@ -1029,6 +1038,7 @@ const AdminDashboard = ({
             sign_path: filePath,
             status: 3,
             status_updated_at: new Date().toISOString(),
+            support_stuff_id: currentStaffId,
           }).eq("id", signHistoryId);
         }
       }
