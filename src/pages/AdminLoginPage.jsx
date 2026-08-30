@@ -41,7 +41,7 @@ const AdminLoginPage = ({ companyName }) => {
             <Settings size={24} className="text-white" />
           </div>
           <h1 className="text-xl font-bold text-white mb-1">管理者ログイン</h1>
-          <p className="text-blue-100 text-sm">{companyName || "Pet Shop System"}</p>
+          <p className="text-blue-100 text-sm">{companyName || "Doga de Sign"}</p>
         </div>
         <div className="p-8">
           <form onSubmit={handleLogin} className="space-y-5">
