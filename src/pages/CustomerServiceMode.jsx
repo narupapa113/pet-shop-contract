@@ -460,12 +460,14 @@ const CustomerServiceMode = ({
           if (updErr) console.error("customers UPDATE エラー:", updErr);
           savedCustomerId = resolution.existingCustomerId;
         } else if (savedCustomerId) {
+          try { await callEdgeFn("save-customer-history", { customerId: savedCustomerId }); } catch (e) { console.error("履歴保存エラー:", e); }
           const { error: updErr } = await supabase.from("customers").update({ ...customerBase, update_at: now }).eq("id", savedCustomerId);
           if (updErr) console.error("customers UPDATE エラー:", updErr);
         } else {
           if (phone && resolution?.mode !== "new") {
             const existing = await findCustomerByPhone(supabase, phone);
             if (existing?.id) {
+              try { await callEdgeFn("save-customer-history", { customerId: existing.id }); } catch (e) { console.error("履歴保存エラー:", e); }
               const { error: updErr } = await supabase.from("customers").update({ ...customerBase, update_at: now }).eq("id", existing.id);
               if (updErr) console.error("customers UPDATE エラー:", updErr);
               savedCustomerId = existing.id;
@@ -534,6 +536,7 @@ const CustomerServiceMode = ({
         } else if (phone && !skipPhoneSearch) {
           const existing = await findCustomerByPhone(supabase, phone);
           if (existing?.id) {
+            try { await callEdgeFn("save-customer-history", { customerId: existing.id }); } catch (e) { console.error("履歴保存エラー:", e); }
             await supabase
               .from("customers")
               .update({ ...customerBase, update_at: now })
