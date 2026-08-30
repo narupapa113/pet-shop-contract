@@ -152,6 +152,42 @@ const CustomerRemoteMode = ({ remoteSessionId, onComplete }) => {
     if (currentStepIndex > 0) setCurrentStepIndex((prev) => prev - 1);
   };
 
+  const callEdgeFn = async (fnName, body) => {
+    const headers = {
+      "Content-Type": "application/json",
+      "Apikey": import.meta.env.VITE_SUPABASE_ANON_KEY,
+    };
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${fnName}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  };
+
+  const recordWatchProgress = async (videoId, watchedSec, requiredSec, flowId) => {
+    try {
+      await callEdgeFn("record-watch-progress", {
+        sessionKey, flowId: flowId ?? "", videoId, watchedSec, requiredSec,
+      });
+    } catch {
+      await supabase.from("video_watch_sessions").upsert(
+        {
+          session_key: sessionKey,
+          flow_id: flowId ?? "",
+          video_id: videoId,
+          watched_sec: watchedSec,
+          required_sec: requiredSec,
+          completed: requiredSec > 0 && watchedSec >= requiredSec,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "session_key,video_id" },
+      );
+    }
+  };
+
+  // 「送信する」押下時に一括INSERT
   const handleFinish = async () => {
     try {
       const phone = customerData.phone?.trim() || null;
@@ -254,7 +290,10 @@ const CustomerRemoteMode = ({ remoteSessionId, onComplete }) => {
             videoPlaylist={videoPlaylist}
             stepConfig={currentStep}
             completedVideoIds={watchedVideoIds}
-            onVideoComplete={setWatchedVideoIds}
+            onWatchProgress={({ videoId, watchedSec, requiredSec }) => {
+            recordWatchProgress(videoId, watchedSec, requiredSec, flow.id);
+          }}
+          onVideoComplete={setWatchedVideoIds}
           />
         );
       case "CUSTOMER_INFO":

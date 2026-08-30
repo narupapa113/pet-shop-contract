@@ -691,6 +691,9 @@ const CustomerServiceMode = ({
             videoPlaylist={videoPlaylist}
             stepConfig={currentStep}
             completedVideoIds={watchedVideoIds}
+            onWatchProgress={({ videoId, watchedSec, requiredSec }) => {
+              recordWatchProgress(videoId, watchedSec, requiredSec, selectedFlow.id);
+            }}
             onVideoComplete={(updater) => {
               setWatchedVideosByStep((prev) => {
                 const current = prev[currentStepIndex] || [];
