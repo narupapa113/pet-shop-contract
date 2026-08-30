@@ -3140,6 +3140,7 @@ const deleteCustomer = async (id) => {
               documentsList={documentsList}
               attachmentIds={historyPreviewData.attachmentIds}
               isRemote={false}
+              hideEditButton={true}
             />
           </div>
         </div>
