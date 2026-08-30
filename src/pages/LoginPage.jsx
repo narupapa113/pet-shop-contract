@@ -8,8 +8,7 @@ const LoginPage = ({ onLoginAdmin, onLoginStaff, companyName }) => {
     <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
         <div className="bg-blue-600 p-6 text-center">
-          <h1 className="text-2xl font-bold text-white mb-2">{companyName || "Pet Shop System"}</h1>
-          <p className="text-blue-100">販売管理・接客支援アプリ</p>
+          <h1 className="text-2xl font-bold text-white mb-2">{companyName || "Doga de Sign"}</h1>
         </div>
         <div className="p-8">
           <div className="space-y-6">
@@ -61,7 +60,7 @@ const LoginPage = ({ onLoginAdmin, onLoginStaff, companyName }) => {
           </div>
         </div>
         <div className="bg-gray-50 px-8 py-4 text-center text-xs text-gray-400 border-t">
-          © 2024 {companyName || "Pet Shop Contract System"}
+          © 2026 KAWACHIYA
         </div>
       </div>
     </div>
