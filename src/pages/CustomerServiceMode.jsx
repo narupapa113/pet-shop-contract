@@ -699,7 +699,11 @@ const CustomerServiceMode = ({
                 if (typeof updater === "function") {
                   const added = next.filter((id) => !current.includes(id));
                   added.forEach((videoId) => {
-                    recordWatchProgress(videoId, 0, selectedFlow.id);
+                    const vid = videoPlaylist.find((v) => v.id === videoId);
+                    const watchedSec = vid?.duration
+                      ? vid.duration.split(":").reduce((a, b) => a * 60 + Number(b), 0)
+                      : 0;
+                    recordWatchProgress(videoId, watchedSec, selectedFlow.id);
                   });
                 }
                 return { ...prev, [currentStepIndex]: next };
