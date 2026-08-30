@@ -197,10 +197,10 @@ const CustomerServiceMode = ({
     return res.json();
   };
 
-  const recordWatchProgress = async (videoId, watchedSec, requiredSec, flowId) => {
+  const recordWatchProgress = async (videoId, watchedSec, flowId) => {
     try {
       await callEdgeFn("record-watch-progress", {
-        sessionKey, flowId: flowId ?? "", videoId, watchedSec, requiredSec,
+        sessionKey, flowId: flowId ?? "", videoId, watchedSec,
       });
     } catch {
       await supabase.from("video_watch_sessions").upsert(
@@ -209,8 +209,6 @@ const CustomerServiceMode = ({
           flow_id: flowId ?? "",
           video_id: videoId,
           watched_sec: watchedSec,
-          required_sec: requiredSec,
-          completed: requiredSec > 0 && watchedSec >= requiredSec,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "session_key,video_id" },
@@ -691,8 +689,8 @@ const CustomerServiceMode = ({
             videoPlaylist={videoPlaylist}
             stepConfig={currentStep}
             completedVideoIds={watchedVideoIds}
-            onWatchProgress={({ videoId, watchedSec, requiredSec }) => {
-              recordWatchProgress(videoId, watchedSec, requiredSec, selectedFlow.id);
+            onWatchProgress={({ videoId, watchedSec }) => {
+              recordWatchProgress(videoId, watchedSec, selectedFlow.id);
             }}
             onVideoComplete={(updater) => {
               setWatchedVideosByStep((prev) => {
@@ -701,11 +699,7 @@ const CustomerServiceMode = ({
                 if (typeof updater === "function") {
                   const added = next.filter((id) => !current.includes(id));
                   added.forEach((videoId) => {
-                    const vid = videoPlaylist.find((v) => v.id === videoId);
-                    const requiredSec = vid?.duration
-                      ? vid.duration.split(":").reduce((a, b) => a * 60 + Number(b), 0)
-                      : 0;
-                    recordWatchProgress(videoId, requiredSec, requiredSec, selectedFlow.id);
+                    recordWatchProgress(videoId, 0, selectedFlow.id);
                   });
                 }
                 return { ...prev, [currentStepIndex]: next };

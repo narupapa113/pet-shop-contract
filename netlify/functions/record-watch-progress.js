@@ -17,7 +17,7 @@ export const handler = async (event) => {
       process.env.SUPABASE_SERVICE_ROLE_KEY,
     );
 
-    const { sessionKey, flowId, videoId, watchedSec, requiredSec } = JSON.parse(event.body);
+    const { sessionKey, flowId, videoId, watchedSec } = JSON.parse(event.body);
 
     if (!sessionKey || !videoId) {
       return {
@@ -26,6 +26,14 @@ export const handler = async (event) => {
         body: JSON.stringify({ error: "sessionKey and videoId are required" }),
       };
     }
+
+    const { data: videoRow } = await supabase
+      .from("videos")
+      .select("video_time")
+      .eq("id", videoId)
+      .maybeSingle();
+
+    const requiredSec = videoRow?.video_time ?? 0;
 
     const completed = requiredSec > 0 && watchedSec >= requiredSec;
 

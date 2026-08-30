@@ -166,10 +166,10 @@ const CustomerRemoteMode = ({ remoteSessionId, onComplete }) => {
     return res.json();
   };
 
-  const recordWatchProgress = async (videoId, watchedSec, requiredSec, flowId) => {
+  const recordWatchProgress = async (videoId, watchedSec, flowId) => {
     try {
       await callEdgeFn("record-watch-progress", {
-        sessionKey, flowId: flowId ?? "", videoId, watchedSec, requiredSec,
+        sessionKey, flowId: flowId ?? "", videoId, watchedSec,
       });
     } catch {
       await supabase.from("video_watch_sessions").upsert(
@@ -178,8 +178,6 @@ const CustomerRemoteMode = ({ remoteSessionId, onComplete }) => {
           flow_id: flowId ?? "",
           video_id: videoId,
           watched_sec: watchedSec,
-          required_sec: requiredSec,
-          completed: requiredSec > 0 && watchedSec >= requiredSec,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "session_key,video_id" },
@@ -290,10 +288,10 @@ const CustomerRemoteMode = ({ remoteSessionId, onComplete }) => {
             videoPlaylist={videoPlaylist}
             stepConfig={currentStep}
             completedVideoIds={watchedVideoIds}
-            onWatchProgress={({ videoId, watchedSec, requiredSec }) => {
-            recordWatchProgress(videoId, watchedSec, requiredSec, flow.id);
-          }}
-          onVideoComplete={setWatchedVideoIds}
+            onWatchProgress={({ videoId, watchedSec }) => {
+              recordWatchProgress(videoId, watchedSec, flow.id);
+            }}
+            onVideoComplete={setWatchedVideoIds}
           />
         );
       case "CUSTOMER_INFO":
