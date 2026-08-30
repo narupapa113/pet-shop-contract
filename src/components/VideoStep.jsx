@@ -140,7 +140,7 @@ const VideoStep = ({
 
     if (onWatchProgress && v._watchedSec - lastReportSecRef.current >= REPORT_INTERVAL_SEC) {
       lastReportSecRef.current = v._watchedSec;
-      onWatchProgress({ videoId: currentVideo.id, watchedSec: Math.floor(v._watchedSec), requiredSec: parseDurationSec(currentVideo.duration) });
+      onWatchProgress({ videoId: currentVideo.id, watchedSec: Math.floor(v._watchedSec) });
     }
   };
 
