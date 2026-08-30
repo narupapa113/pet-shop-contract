@@ -47,6 +47,13 @@ const CustomerServiceMode = ({
   const location = useLocation();
   const [incompleteCount, setIncompleteCount] = useState(0);
   const [finishModalOpen, setFinishModalOpen] = useState(false);
+  const [currentStaffId, setCurrentStaffId] = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.id) setCurrentStaffId(session.user.id);
+    });
+  }, []);
 
   const fetchIncompleteCount = useCallback(async () => {
     let q = supabase
@@ -266,6 +273,7 @@ const CustomerServiceMode = ({
             status: 1,
             status_updated_at: new Date().toISOString(),
             store_id: storeId,
+            support_stuff_id: currentStaffId,
           })
           .select("id")
           .maybeSingle();
@@ -488,6 +496,7 @@ const CustomerServiceMode = ({
           setCustomerId(savedCustomerId);
           const { error: shErr } = await supabase.from("sign_history").update({
             sign_customer_id: savedCustomerId,
+            support_stuff_id: currentStaffId,
           }).eq("id", signHistoryId);
           if (shErr) console.error("sign_history UPDATE エラー:", shErr);
         } else {
@@ -571,6 +580,7 @@ const CustomerServiceMode = ({
               videoIds: allWatchedVideoIds,
               signHistoryId: newSignHistoryId,
               storeId: storeId,
+              supportStuffId: currentStaffId,
             });
             saved = true;
           } catch { /* fall through */ }
@@ -589,6 +599,7 @@ const CustomerServiceMode = ({
                 video_id: allWatchedVideoIds,
                 status: 3,
                 status_updated_at: new Date().toISOString(),
+                support_stuff_id: currentStaffId,
               }).eq("id", newSignHistoryId);
             } else {
               const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -605,6 +616,7 @@ const CustomerServiceMode = ({
                     status: 3,
                     status_updated_at: new Date().toISOString(),
                     store_id: storeId,
+                    support_stuff_id: currentStaffId,
                   })
                   .select("id")
                   .maybeSingle();

@@ -113,6 +113,13 @@ const AdminDashboard = ({
   storeId,
 }) => {
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [currentStaffId, setCurrentStaffId] = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.id) setCurrentStaffId(session.user.id);
+    });
+  }, []);
   const [selectedTemplateId, setSelectedTemplateId] = useState(staffTemplates[0]?.id);
   const [isSaved, setIsSaved] = useState(false);
 
@@ -618,6 +625,7 @@ const AdminDashboard = ({
   const [newFlowData, setNewFlowData] = useState({ name: "", description: "", templateId: "", attachmentIds: [] });
   const [editingSteps, setEditingSteps] = useState([]);
   const [flowModalOpen, setFlowModalOpen] = useState(false);
+  const [flowErrors, setFlowErrors] = useState({});
 
   const STEP_TYPE_STR = { 1: "VIDEO", 2: "CUSTOMER_INFO", 3: "SIGNATURE", 4: "STAFF_INPUT", 5: "CONTRACT_PREVIEW" };
 
@@ -650,6 +658,7 @@ const AdminDashboard = ({
   ];
 
   const openFlowModal = (flow = null) => {
+    setFlowErrors({});
     if (flow) {
       setEditingFlowId(flow.id);
       // DBから削除済みの添付資料IDを除外し、残っているものだけ①から順に並べ直す
@@ -700,6 +709,7 @@ const AdminDashboard = ({
     const currentIds = step.videoIds || [];
     const newIds = currentIds.includes(videoId) ? currentIds.filter((id) => id !== videoId) : [...currentIds, videoId];
     updateStep(stepIndex, "videoIds", newIds);
+    if (newIds.length > 0) setFlowErrors((prev) => ({ ...prev, videoIds: undefined }));
   };
 
   const handleAttachmentSelection = (docId) => {
@@ -712,9 +722,20 @@ const AdminDashboard = ({
 
   const STEP_TYPE_NUM = { VIDEO: 1, CUSTOMER_INFO: 2, SIGNATURE: 3, STAFF_INPUT: 4, CONTRACT_PREVIEW: 5 };
 
+  const validateFlow = () => {
+    const errors = {};
+    if (!newFlowData.name?.trim()) errors.name = "フロー名を入力してください";
+    if (!newFlowData.templateId) errors.templateId = "契約書テンプレートを選択してください";
+    const videoStep = editingSteps.find((s) => s.type === "VIDEO");
+    if (!videoStep || (videoStep.videoIds || []).length === 0) errors.videoIds = "再生する動画を1つ以上選択してください";
+    return errors;
+  };
+
   const saveFlow = async () => {
     if (!can(adminPermissions, 8, editingFlowId ? 3 : 2)) return;
-    if (!newFlowData.name) return;
+    const errors = validateFlow();
+    if (Object.keys(errors).length > 0) { setFlowErrors(errors); return; }
+    setFlowErrors({});
     const validUuid = (v) => (v && uuidRegex.test(v) ? v : null);
     const headerPayload = {
       name: newFlowData.name,
@@ -959,6 +980,7 @@ const AdminDashboard = ({
             status_updated_at: new Date().toISOString(),
             onetime_url_id: row.id || null,
             store_id: storeId,
+            support_stuff_id: currentStaffId,
           })
           .select("id")
           .maybeSingle();
@@ -1012,6 +1034,7 @@ const AdminDashboard = ({
                 status: 3,
                 status_updated_at: new Date().toISOString(),
                 store_id: storeId,
+                support_stuff_id: currentStaffId,
               })
               .select("id")
               .maybeSingle();
@@ -1029,6 +1052,7 @@ const AdminDashboard = ({
             sign_path: filePath,
             status: 3,
             status_updated_at: new Date().toISOString(),
+            support_stuff_id: currentStaffId,
           }).eq("id", signHistoryId);
         }
       }
@@ -2567,14 +2591,16 @@ const deleteCustomer = async (id) => {
                   <div className="flex-1 overflow-y-auto p-6">
                     <div className="mb-6 grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">フロー名</label>
-                        <input type="text" className="w-full p-2 border border-gray-300 rounded" value={newFlowData.name} onChange={(e) => setNewFlowData({ ...newFlowData, name: e.target.value })} placeholder="例: 里親募集用フロー" />
+                        <label className="block text-sm font-medium text-gray-700 mb-1">フロー名 <span className="text-red-500">*</span></label>
+                        <input type="text" className={`w-full p-2 border rounded ${flowErrors.name ? "border-red-400 bg-red-50" : "border-gray-300"}`} value={newFlowData.name} onChange={(e) => { setNewFlowData({ ...newFlowData, name: e.target.value }); setFlowErrors((prev) => ({ ...prev, name: undefined })); }} placeholder="例: 里親募集用フロー" />
+                        {flowErrors.name && <p className="text-xs text-red-500 mt-1">{flowErrors.name}</p>}
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">使用する契約書テンプレート</label>
-                        <select className="w-full p-2 border border-gray-300 rounded bg-white" value={newFlowData.templateId} onChange={(e) => setNewFlowData({ ...newFlowData, templateId: e.target.value })}>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">使用する契約書テンプレート <span className="text-red-500">*</span></label>
+                        <select className={`w-full p-2 border rounded bg-white ${flowErrors.templateId ? "border-red-400 bg-red-50" : "border-gray-300"}`} value={newFlowData.templateId} onChange={(e) => { setNewFlowData({ ...newFlowData, templateId: e.target.value }); setFlowErrors((prev) => ({ ...prev, templateId: undefined })); }}>
                           {staffTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                         </select>
+                        {flowErrors.templateId && <p className="text-xs text-red-500 mt-1">{flowErrors.templateId}</p>}
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">説明</label>
@@ -2653,7 +2679,8 @@ const deleteCustomer = async (id) => {
                             <div className="mt-3 bg-gray-50 p-3 rounded border border-gray-200">
                               <div className="flex items-start gap-4">
                                 <div className="flex-1">
-                                  <p className="text-xs font-bold text-gray-500 mb-2">再生する動画を選択</p>
+                                  <p className="text-xs font-bold text-gray-500 mb-2">再生する動画を選択 <span className="text-red-500">*</span></p>
+                                  {flowErrors.videoIds && <p className="text-xs text-red-500 mb-2">{flowErrors.videoIds}</p>}
                                   <div className="flex flex-wrap gap-2">
                                     {videoPlaylist.map((video) => {
                                       const selectedIdx = (step.videoIds || []).indexOf(video.id);
