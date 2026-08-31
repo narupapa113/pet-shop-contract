@@ -1281,7 +1281,7 @@ const deleteCustomer = async (id) => {
       if (flowRow?.contract_template_id) {
         const { data: items } = await supabase
           .from("contract_templates_item")
-          .select("item_no, item_name")
+          .select("item_no, item_name, input_type")
           .eq("id", flowRow.contract_template_id)
           .order("item_no", { ascending: true });
         templateItems = items || [];
@@ -1295,9 +1295,10 @@ const deleteCustomer = async (id) => {
       }
 
       // staffFields: テンプレート項目とsign_inputを対応付け
+      const INPUT_TYPE_TO_STR = { 1: "text", 2: "number", 3: "date", 4: "select" };
       const staffFields = templateItems.map((item) => {
         const input = (inputs || []).find((i) => i.sign_item_no === item.item_no);
-        return { id: `item_${item.item_no}`, label: item.item_name, value: input?.sign_item_value || "" };
+        return { id: `item_${item.item_no}`, label: item.item_name, value: input?.sign_item_value || "", type: INPUT_TYPE_TO_STR[item.input_type] || "text" };
       });
 
       // 顧客データ
@@ -1371,7 +1372,7 @@ const deleteCustomer = async (id) => {
     if (flowRow?.contract_template_id) {
       const { data: items } = await supabase
         .from("contract_templates_item")
-        .select("item_no, item_name")
+        .select("item_no, item_name, input_type")
         .eq("id", flowRow.contract_template_id)
         .order("item_no", { ascending: true });
       templateItems = items || [];
@@ -3089,9 +3090,9 @@ const deleteCustomer = async (id) => {
                     {signHistoryDetail.inputs.map((inp) => {
                       const templateItem = signHistoryDetail.templateItems.find((t) => t.item_no === inp.sign_item_no);
                       const label = templateItem?.item_name || `項目 ${inp.sign_item_no}`;
-                      const isPrice = label === "生体価格 (円)";
+                      const isNumeric = templateItem?.input_type === 2;
                       const rawValue = inp.sign_item_value || "—";
-                      const displayValue = isPrice && /^\d+$/.test(rawValue)
+                      const displayValue = isNumeric && /^\d+$/.test(rawValue)
                         ? Number(rawValue).toLocaleString("ja-JP")
                         : rawValue;
                       return (

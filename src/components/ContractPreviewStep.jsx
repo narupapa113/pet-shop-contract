@@ -280,9 +280,9 @@ const ContractPreviewStep = ({
           <table className="w-full border-collapse border border-gray-400">
             <tbody>
               {staffFields.map((field) => {
-                const isPrice = field.label === "生体価格 (円)";
+                const isNumeric = field.type === "number";
                 const formattedValue =
-                  isPrice && field.value && /^\d+$/.test(field.value)
+                  isNumeric && field.value && /^\d+$/.test(field.value)
                     ? Number(field.value).toLocaleString("ja-JP")
                     : field.value;
                 return (
