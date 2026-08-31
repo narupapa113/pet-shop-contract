@@ -40,17 +40,17 @@ const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemot
     }
     setErrors({});
 
+    // 同一セッション内で既に作成済みの自分のレコードがあれば重複チェック自体をスキップ
+    if (sessionCustomerId) {
+      onNext();
+      return;
+    }
+
     // 電話番号重複チェック
     setDupPhase("searching");
     try {
       const existing = await findCustomerByPhone(supabase, data.phone);
       if (existing) {
-        // 同一セッション内で既に作成済みの自分のレコードなら重複警告を出さず更新として扱う
-        if (sessionCustomerId && existing.id === sessionCustomerId) {
-          setDupPhase(null);
-          onNext();
-          return;
-        }
         if (isRemote) {
           // リモートモード: 重複が見つかってもお客様には一切警告を見せず、そのまま次へ進む
           // 重複情報は handleFinish で sign_history のステータス(要確認)として記録される
