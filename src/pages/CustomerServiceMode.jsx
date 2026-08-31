@@ -47,6 +47,13 @@ const CustomerServiceMode = ({
   const location = useLocation();
   const [incompleteCount, setIncompleteCount] = useState(0);
   const [finishModalOpen, setFinishModalOpen] = useState(false);
+  const [currentStaffId, setCurrentStaffId] = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.id) setCurrentStaffId(session.user.id);
+    });
+  }, []);
 
   const fetchIncompleteCount = useCallback(async () => {
     let q = supabase
@@ -197,10 +204,10 @@ const CustomerServiceMode = ({
     return res.json();
   };
 
-  const recordWatchProgress = async (videoId, watchedSec, requiredSec, flowId) => {
+  const recordWatchProgress = async (videoId, watchedSec, flowId) => {
     try {
       await callEdgeFn("record-watch-progress", {
-        sessionKey, flowId: flowId ?? "", videoId, watchedSec, requiredSec,
+        sessionKey, flowId: flowId ?? "", videoId, watchedSec,
       });
     } catch {
       await supabase.from("video_watch_sessions").upsert(
@@ -209,8 +216,6 @@ const CustomerServiceMode = ({
           flow_id: flowId ?? "",
           video_id: videoId,
           watched_sec: watchedSec,
-          required_sec: requiredSec,
-          completed: requiredSec > 0 && watchedSec >= requiredSec,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "session_key,video_id" },
@@ -268,6 +273,7 @@ const CustomerServiceMode = ({
             status: 1,
             status_updated_at: new Date().toISOString(),
             store_id: storeId,
+            support_stuff_id: currentStaffId,
           })
           .select("id")
           .maybeSingle();
@@ -433,6 +439,7 @@ const CustomerServiceMode = ({
       console.warn("saveCustomerInfo: ガード条件不合格", { signHistoryId, hasName: !!customerData.name?.trim() });
       return null;
     }
+
     try {
       const phone = customerData.phone?.trim() || null;
       const now = new Date().toISOString();
@@ -461,12 +468,14 @@ const CustomerServiceMode = ({
         if (updErr) console.error("customers UPDATE エラー:", updErr);
         savedCustomerId = resolution.existingCustomerId;
       } else if (savedCustomerId) {
+        try { await callEdgeFn("save-customer-history", { customerId: savedCustomerId }); } catch (e) { console.error("履歴保存エラー:", e); }
         const { error: updErr } = await supabase.from("customers").update({ ...customerBase, update_at: now }).eq("id", savedCustomerId);
         if (updErr) console.error("customers UPDATE エラー:", updErr);
       } else {
         if (phone && resolution?.mode !== "new") {
           const existing = await findCustomerByPhone(supabase, phone);
           if (existing?.id) {
+            try { await callEdgeFn("save-customer-history", { customerId: existing.id }); } catch (e) { console.error("履歴保存エラー:", e); }
             const { error: updErr } = await supabase.from("customers").update({ ...customerBase, update_at: now }).eq("id", existing.id);
             if (updErr) console.error("customers UPDATE エラー:", updErr);
             savedCustomerId = existing.id;
@@ -487,12 +496,14 @@ const CustomerServiceMode = ({
         setCustomerId(savedCustomerId);
         const { error: shErr } = await supabase.from("sign_history").update({
           sign_customer_id: savedCustomerId,
+          support_stuff_id: currentStaffId,
         }).eq("id", signHistoryId);
         if (shErr) console.error("sign_history UPDATE エラー:", shErr);
       } else {
         console.error("お客様情報の保存に失敗: savedCustomerId が null です");
       }
       return savedCustomerId;
+      
     } catch (err) {
       console.error("お客様情報の保存に失敗:", err);
       return null;
@@ -540,6 +551,7 @@ const CustomerServiceMode = ({
         } else if (phone && !skipPhoneSearch) {
           const existing = await findCustomerByPhone(supabase, phone);
           if (existing?.id) {
+            try { await callEdgeFn("save-customer-history", { customerId: existing.id }); } catch (e) { console.error("履歴保存エラー:", e); }
             await supabase
               .from("customers")
               .update({ ...customerBase, update_at: now })
@@ -574,6 +586,7 @@ const CustomerServiceMode = ({
               videoIds: allWatchedVideoIds,
               signHistoryId: newSignHistoryId,
               storeId: storeId,
+              supportStuffId: currentStaffId,
             });
             saved = true;
           } catch { /* fall through */ }
@@ -592,6 +605,7 @@ const CustomerServiceMode = ({
                 video_id: allWatchedVideoIds,
                 status: 3,
                 status_updated_at: new Date().toISOString(),
+                support_stuff_id: currentStaffId,
               }).eq("id", newSignHistoryId);
             } else {
               const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -608,6 +622,7 @@ const CustomerServiceMode = ({
                     status: 3,
                     status_updated_at: new Date().toISOString(),
                     store_id: storeId,
+                    support_stuff_id: currentStaffId,
                   })
                   .select("id")
                   .maybeSingle();
@@ -695,8 +710,8 @@ const CustomerServiceMode = ({
             videoPlaylist={videoPlaylist}
             stepConfig={currentStep}
             completedVideoIds={watchedVideoIds}
-            onWatchProgress={({ videoId, watchedSec, requiredSec }) => {
-              recordWatchProgress(videoId, watchedSec, requiredSec, selectedFlow.id);
+            onWatchProgress={({ videoId, watchedSec }) => {
+              recordWatchProgress(videoId, watchedSec, selectedFlow.id);
             }}
             onVideoComplete={(updater) => {
               setWatchedVideosByStep((prev) => {
@@ -706,10 +721,10 @@ const CustomerServiceMode = ({
                   const added = next.filter((id) => !current.includes(id));
                   added.forEach((videoId) => {
                     const vid = videoPlaylist.find((v) => v.id === videoId);
-                    const requiredSec = vid?.duration
+                    const watchedSec = vid?.duration
                       ? vid.duration.split(":").reduce((a, b) => a * 60 + Number(b), 0)
                       : 0;
-                    recordWatchProgress(videoId, requiredSec, requiredSec, selectedFlow.id);
+                    recordWatchProgress(videoId, watchedSec, selectedFlow.id);
                   });
                 }
                 return { ...prev, [currentStepIndex]: next };

@@ -17,7 +17,7 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { sessionKey, flowId, videoId, watchedSec, requiredSec } = await req.json();
+    const { sessionKey, flowId, videoId, watchedSec } = await req.json();
 
     if (!sessionKey || !videoId) {
       return new Response(
@@ -25,6 +25,15 @@ Deno.serve(async (req: Request) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
+
+    // required_sec はクライアントから受け取らず、DBの videos.video_time から取得する
+    const { data: videoRow } = await supabase
+      .from("videos")
+      .select("video_time")
+      .eq("id", videoId)
+      .maybeSingle();
+
+    const requiredSec = videoRow?.video_time ?? 0;
 
     const completed = requiredSec > 0 && watchedSec >= requiredSec;
 

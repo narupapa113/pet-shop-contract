@@ -23,6 +23,13 @@ const IncompleteListPage = ({ onBack, onResume, flows, staffTemplates, storeId }
   const [mergeLoading, setMergeLoading] = useState(false);
   const [mergeDone, setMergeDone] = useState(null);
   const [resumeItem, setResumeItem] = useState(null);
+  const [currentStaffId, setCurrentStaffId] = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.id) setCurrentStaffId(session.user.id);
+    });
+  }, []);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -59,6 +66,24 @@ const IncompleteListPage = ({ onBack, onResume, flows, staffTemplates, storeId }
     setMergeLoading(false);
   };
 
+  const callEdgeFn = async (fnName, body) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = {
+      "Content-Type": "application/json",
+      "Apikey": import.meta.env.VITE_SUPABASE_ANON_KEY,
+    };
+    if (session?.access_token) {
+      headers["Authorization"] = `Bearer ${session.access_token}`;
+    }
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${fnName}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  };
+
   const handleMergeOverwrite = async () => {
     if (!mergeTarget || !existingCustomer) return;
     const c = mergeTarget.customers;
@@ -68,12 +93,14 @@ const IncompleteListPage = ({ onBack, onResume, flows, staffTemplates, storeId }
     if (c?.name_kana) updateFields.name_kana = c.name_kana;
     if (c?.mail) updateFields.mail = c.mail;
     if (c?.address) updateFields.address = c.address;
+    try { await callEdgeFn("save-customer-history", { customerId: existingCustomer.id }); } catch (e) { console.error("履歴保存エラー:", e); }
     await supabase.from("customers").update(updateFields).eq("id", existingCustomer.id);
     // sign_history の顧客IDを既存顧客に切り替え、重複フラグを解消
     await supabase.from("sign_history").update({
       sign_customer_id: existingCustomer.id,
       status: 4,
       status_updated_at: now,
+      support_stuff_id: currentStaffId,
     }).eq("id", mergeTarget.id);
     // 重複した新規顧客レコードを論理削除
     if (mergeTarget.sign_customer_id && mergeTarget.sign_customer_id !== existingCustomer.id) {
@@ -89,6 +116,7 @@ const IncompleteListPage = ({ onBack, onResume, flows, staffTemplates, storeId }
     await supabase.from("sign_history").update({
       status: 4,
       status_updated_at: now,
+      support_stuff_id: currentStaffId,
     }).eq("id", mergeTarget.id);
     setResumeItem({ ...mergeTarget, status: 4 });
     setMergeDone("new");
