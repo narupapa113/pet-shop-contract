@@ -279,13 +279,19 @@ const ContractPreviewStep = ({
           </h3>
           <table className="w-full border-collapse border border-gray-400">
             <tbody>
-              {staffFields.map((field) => (
+              {staffFields.map((field) => {
+                const isNumeric = field.type === "number";
+                const formattedValue =
+                  isNumeric && field.value && /^\d+$/.test(field.value)
+                    ? Number(field.value).toLocaleString("ja-JP")
+                    : field.value;
+                return (
                 <tr key={field.id}>
                   <th className="border border-gray-400 p-2 bg-gray-50 w-1/3 text-left font-bold print:bg-gray-50">
                     {field.label}
                   </th>
                   <td className="border border-gray-400 p-2">
-                    {field.value ||
+                    {formattedValue ||
                       (isRemote ? (
                         <span className="text-gray-400 italic">
                           （店舗にて記入）
@@ -295,7 +301,8 @@ const ContractPreviewStep = ({
                       ))}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

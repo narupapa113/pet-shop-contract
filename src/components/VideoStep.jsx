@@ -136,6 +136,7 @@ const VideoStep = ({
       v._midPaused = true;
       v.pause();
       setMidPauseShown(true);
+      exitFullscreen();
     }
 
     if (onWatchProgress && v._watchedSec - lastReportSecRef.current >= REPORT_INTERVAL_SEC) {
@@ -150,6 +151,7 @@ const VideoStep = ({
     setMidPauseShown(false);
     v.play();
     setIsPlaying(true);
+    enterFullscreen();
   };
 
   const handleVideoEnded = () => {
@@ -178,6 +180,7 @@ const VideoStep = ({
 
       if (v) v._watchedSec = 0;
       setProgress(100);
+      exitFullscreen();
       onVideoComplete((prev) => [...prev, currentVideo.id]);
     }
   };
@@ -218,6 +221,7 @@ const VideoStep = ({
     if (currentVideoIndex < activePlaylist.length - 1) {
       shouldAutoPlayRef.current = true;
       setCurrentVideoIndex((prev) => prev + 1);
+      enterFullscreen();
     }
   };
 

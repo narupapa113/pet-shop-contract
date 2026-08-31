@@ -1,0 +1,29 @@
+[functions.issue-completion-token]
+verify_jwt = true
+
+[functions.record-watch-progress]
+verify_jwt = true
+
+[functions.save-signature]
+verify_jwt = true
+
+[functions.send-otp]
+verify_jwt = false
+
+[functions.verify-otp]
+verify_jwt = false
+
+[functions.send-url-email]
+verify_jwt = false
+
+[functions.create-user]
+verify_jwt = true
+
+[functions.delete-user]
+verify_jwt = true
+
+[functions.save-customer-history]
+verify_jwt = false
+
+[functions.delete-onetime-url]
+verify_jwt = false

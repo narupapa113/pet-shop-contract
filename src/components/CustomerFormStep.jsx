@@ -10,7 +10,7 @@ const validatePhone = (phone) => {
   return null;
 };
 
-const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemote }) => {
+const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemote, sessionCustomerId }) => {
   const [errors, setErrors] = useState({});
   // phase: null | "searching" | "duplicate_found" | "handed_to_staff" | "staff_confirm" | "show_existing"
   const [dupPhase, setDupPhase] = useState(null);
@@ -39,6 +39,12 @@ const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemot
       return;
     }
     setErrors({});
+
+    // 同一セッション内で既に作成済みの自分のレコードがあれば重複チェック自体をスキップ
+    if (sessionCustomerId) {
+      onNext();
+      return;
+    }
 
     // 電話番号重複チェック
     setDupPhase("searching");
