@@ -82,16 +82,33 @@ const VideoStep = ({
   }, []);
 
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-      if (!document.fullscreenElement && videoRef.current && !videoRef.current.paused) {
-        videoRef.current.pause();
+    const syncFullscreenState = () => {
+      const video = videoRef.current;
+      const isFullscreenNow =
+        Boolean(document.fullscreenElement) ||
+        Boolean(video?.webkitDisplayingFullscreen);
+      setIsFullscreen(isFullscreenNow);
+      if (!isFullscreenNow && video && !video.paused) {
+        video.pause();
         setIsPlaying(false);
       }
     };
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, []);
+
+    document.addEventListener("fullscreenchange", syncFullscreenState);
+    const video = videoRef.current;
+    if (video) {
+      video.addEventListener("webkitbeginfullscreen", syncFullscreenState);
+      video.addEventListener("webkitendfullscreen", syncFullscreenState);
+    }
+    return () => {
+      document.removeEventListener("fullscreenchange", syncFullscreenState);
+      const v = videoRef.current;
+      if (v) {
+        v.removeEventListener("webkitbeginfullscreen", syncFullscreenState);
+        v.removeEventListener("webkitendfullscreen", syncFullscreenState);
+      }
+    };
+  }, [currentVideoIndex]);
 
   useEffect(() => {
     return () => {
@@ -100,15 +117,22 @@ const VideoStep = ({
   }, []);
 
   const enterFullscreen = () => {
-    const el = videoContainerRef.current;
-    if (!el) return;
-    if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
-    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    const container = videoContainerRef.current;
+    const video = videoRef.current;
+    if (container?.requestFullscreen) {
+      container.requestFullscreen().catch(() => {});
+    } else if (video?.webkitEnterFullscreen) {
+      video.webkitEnterFullscreen();
+    }
   };
 
   const exitFullscreen = () => {
-    if (document.fullscreenElement) {
+    const video = videoRef.current;
+    if (document.fullscreenElement && document.exitFullscreen) {
       document.exitFullscreen().catch(() => {});
+    }
+    if (video?.webkitDisplayingFullscreen && video.webkitExitFullscreen) {
+      video.webkitExitFullscreen();
     }
   };
 
@@ -232,7 +256,6 @@ const VideoStep = ({
       if (v) {
         v.play().then(() => {
           setIsPlaying(true);
-          if (!document.fullscreenElement) enterFullscreen();
         }).catch(() => {});
       }
     }
@@ -299,6 +322,8 @@ const VideoStep = ({
                 ref={videoRef}
                 src={currentVideo.url}
                 className="absolute inset-0 w-full h-full object-contain"
+                playsInline
+                webkit-playsinline="true"
                 onTimeUpdate={handleTimeUpdate}
                 onEnded={handleVideoEnded}
                 onLoadedData={handleLoadedData}
