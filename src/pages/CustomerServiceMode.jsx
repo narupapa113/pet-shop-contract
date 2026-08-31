@@ -425,81 +425,85 @@ const CustomerServiceMode = ({
     setStaffFields((prev) => prev.map((field) => (field.id === id ? { ...field, label: newLabel } : field)));
   };
 
-  const handlePrint = () => window.print();
+    const handlePrint = () => window.print();
+
+  // お客様情報をDBに保存し、sign_historyに紐付ける（未完了一覧に顧客名を表示するため）
+  const saveCustomerInfo = async (resolution) => {
+    if (!signHistoryId || !customerData.name?.trim()) {
+      console.warn("saveCustomerInfo: ガード条件不合格", { signHistoryId, hasName: !!customerData.name?.trim() });
+      return null;
+    }
+    try {
+      const phone = customerData.phone?.trim() || null;
+      const now = new Date().toISOString();
+      const customerBase = {
+        name: customerData.name,
+        name_kana: customerData.nameKana || null,
+        tell: phone,
+        mail: customerData.email || null,
+        address: customerData.address || null,
+        last_enter_store_at: now,
+      };
+
+      let savedCustomerId = customerId;
+
+      if (resolution?.mode === "overwrite" && resolution.existingCustomerId) {
+        try { await callEdgeFn("save-customer-history", { customerId: resolution.existingCustomerId }); } catch (e) { console.error("履歴保存エラー:", e); }
+        const updateFields = {};
+        if (customerData.name?.trim()) updateFields.name = customerData.name;
+        if (customerData.nameKana?.trim()) updateFields.name_kana = customerData.nameKana;
+        if (phone) updateFields.tell = phone;
+        if (customerData.email?.trim()) updateFields.mail = customerData.email;
+        if (customerData.address?.trim()) updateFields.address = customerData.address;
+        updateFields.last_enter_store_at = now;
+        updateFields.update_at = now;
+        const { error: updErr } = await supabase.from("customers").update(updateFields).eq("id", resolution.existingCustomerId);
+        if (updErr) console.error("customers UPDATE エラー:", updErr);
+        savedCustomerId = resolution.existingCustomerId;
+      } else if (savedCustomerId) {
+        const { error: updErr } = await supabase.from("customers").update({ ...customerBase, update_at: now }).eq("id", savedCustomerId);
+        if (updErr) console.error("customers UPDATE エラー:", updErr);
+      } else {
+        if (phone && resolution?.mode !== "new") {
+          const existing = await findCustomerByPhone(supabase, phone);
+          if (existing?.id) {
+            const { error: updErr } = await supabase.from("customers").update({ ...customerBase, update_at: now }).eq("id", existing.id);
+            if (updErr) console.error("customers UPDATE エラー:", updErr);
+            savedCustomerId = existing.id;
+          }
+        }
+        if (!savedCustomerId) {
+          const { data: custData, error: insErr } = await supabase
+            .from("customers")
+            .insert({ ...customerBase, create_at: now })
+            .select("id")
+            .maybeSingle();
+          if (insErr) console.error("customers INSERT エラー:", insErr);
+          savedCustomerId = custData?.id ?? null;
+        }
+      }
+
+      if (savedCustomerId) {
+        setCustomerId(savedCustomerId);
+        const { error: shErr } = await supabase.from("sign_history").update({
+          sign_customer_id: savedCustomerId,
+        }).eq("id", signHistoryId);
+        if (shErr) console.error("sign_history UPDATE エラー:", shErr);
+      } else {
+        console.error("お客様情報の保存に失敗: savedCustomerId が null です");
+      }
+      return savedCustomerId;
+    } catch (err) {
+      console.error("お客様情報の保存に失敗:", err);
+      return null;
+    }
+  };
 
   const handleCustomerNext = async (resolution) => {
     if (resolution && resolution.mode) {
       setCustomerResolution(resolution);
     }
-
-    // お客様情報をDBに保存し、sign_historyに紐付ける（未完了一覧に顧客名を表示するため）
-    if (signHistoryId && customerData.name?.trim()) {
-      try {
-        const phone = customerData.phone?.trim() || null;
-        const now = new Date().toISOString();
-        const customerBase = {
-          name: customerData.name,
-          name_kana: customerData.nameKana || null,
-          tell: phone,
-          mail: customerData.email || null,
-          address: customerData.address || null,
-          last_enter_store_at: now,
-        };
-
-        let savedCustomerId = customerId;
-
-        if (resolution?.mode === "overwrite" && resolution.existingCustomerId) {
-          try { await callEdgeFn("save-customer-history", { customerId: resolution.existingCustomerId }); } catch (e) { console.error("履歴保存エラー:", e); }
-          const updateFields = {};
-          if (customerData.name?.trim()) updateFields.name = customerData.name;
-          if (customerData.nameKana?.trim()) updateFields.name_kana = customerData.nameKana;
-          if (phone) updateFields.tell = phone;
-          if (customerData.email?.trim()) updateFields.mail = customerData.email;
-          if (customerData.address?.trim()) updateFields.address = customerData.address;
-          updateFields.last_enter_store_at = now;
-          updateFields.update_at = now;
-          const { error: updErr } = await supabase.from("customers").update(updateFields).eq("id", resolution.existingCustomerId);
-          if (updErr) console.error("customers UPDATE エラー:", updErr);
-          savedCustomerId = resolution.existingCustomerId;
-        } else if (savedCustomerId) {
-          const { error: updErr } = await supabase.from("customers").update({ ...customerBase, update_at: now }).eq("id", savedCustomerId);
-          if (updErr) console.error("customers UPDATE エラー:", updErr);
-        } else {
-          if (phone && resolution?.mode !== "new") {
-            const existing = await findCustomerByPhone(supabase, phone);
-            if (existing?.id) {
-              const { error: updErr } = await supabase.from("customers").update({ ...customerBase, update_at: now }).eq("id", existing.id);
-              if (updErr) console.error("customers UPDATE エラー:", updErr);
-              savedCustomerId = existing.id;
-            }
-          }
-          if (!savedCustomerId) {
-            const { data: custData, error: insErr } = await supabase
-              .from("customers")
-              .insert({ ...customerBase, create_at: now })
-              .select("id")
-              .maybeSingle();
-            if (insErr) console.error("customers INSERT エラー:", insErr);
-            savedCustomerId = custData?.id ?? null;
-          }
-        }
-
-        if (savedCustomerId) {
-          setCustomerId(savedCustomerId);
-          const { error: shErr } = await supabase.from("sign_history").update({
-            sign_customer_id: savedCustomerId,
-          }).eq("id", signHistoryId);
-          if (shErr) console.error("sign_history UPDATE エラー:", shErr);
-        } else {
-          console.error("お客様情報の保存に失敗: savedCustomerId が null です");
-        }
-      } catch (err) {
-        console.error("お客様情報の保存に失敗:", err);
-      }
-    } else {
-      console.warn("handleCustomerNext: ガード条件不合格", { signHistoryId, hasName: !!customerData.name?.trim() });
-    }
-
+    await saveCustomerInfo(resolution);
     nextStep();
   };
 
@@ -691,6 +695,9 @@ const CustomerServiceMode = ({
             videoPlaylist={videoPlaylist}
             stepConfig={currentStep}
             completedVideoIds={watchedVideoIds}
+            onWatchProgress={({ videoId, watchedSec, requiredSec }) => {
+              recordWatchProgress(videoId, watchedSec, requiredSec, selectedFlow.id);
+            }}
             onVideoComplete={(updater) => {
               setWatchedVideosByStep((prev) => {
                 const current = prev[currentStepIndex] || [];
@@ -776,6 +783,7 @@ const CustomerServiceMode = ({
             onClick={async () => {
               if (initializing) return;
               if (window.confirm("接客を中断しますか？\nここまでの入力内容はすべて保存され、後で未完了一覧から再開できます。（署名は保存されず、再開時に白紙から書き直していただきます）")) {
+                await saveCustomerInfo();
                 await saveSessionState();
                 setSelectedFlow(null);
                 fetchIncompleteCount();
@@ -817,6 +825,7 @@ const CustomerServiceMode = ({
             onClick={async () => {
               if (initializing) return;
               if (signHistoryId && selectedFlow) {
+                await saveCustomerInfo();
                 await saveSessionState();
               }
               onLogout();
