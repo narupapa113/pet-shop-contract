@@ -2836,13 +2836,15 @@ const deleteCustomer = async (id) => {
                           </td>
                           <td className="px-5 py-3 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() => openHistoryPreview(h)}
-                                disabled={historyPreviewLoading === h.id}
-                                className="text-green-600 hover:text-green-800 text-xs font-bold px-3 py-1 border border-green-200 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50"
-                              >
-                                {historyPreviewLoading === h.id ? "読込中..." : "PDF出力"}
-                              </button>
+                              {h.status === 3 && (
+                                <button
+                                  onClick={() => openHistoryPreview(h)}
+                                  disabled={historyPreviewLoading === h.id}
+                                  className="text-green-600 hover:text-green-800 text-xs font-bold px-3 py-1 border border-green-200 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50"
+                                >
+                                  {historyPreviewLoading === h.id ? "読込中..." : "PDF出力"}
+                                </button>
+                              )}
                               <button
                                 onClick={() => openSignHistoryDetail(h)}
                                 className="text-blue-600 hover:text-blue-800 text-xs font-bold px-3 py-1 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors"
