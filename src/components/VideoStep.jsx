@@ -8,7 +8,6 @@ import {
   RotateCcw,
   Lock,
   List,
-  Minimize2,
 } from "lucide-react";
 
 const VideoStep = ({
@@ -33,10 +32,8 @@ const VideoStep = ({
   const [insufficientModal, setInsufficientModal] = useState(null);
   const [midPauseShown, setMidPauseShown] = useState(false);
   const videoRef = useRef(null);
-  const videoContainerRef = useRef(null);
   const videoStartTimesRef = useRef({});
   const shouldAutoPlayRef = useRef(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [showPauseIcon, setShowPauseIcon] = useState(false);
   const pauseIconTimeoutRef = useRef(null);
   const lastReportSecRef = useRef(0);
@@ -82,59 +79,10 @@ const VideoStep = ({
   }, []);
 
   useEffect(() => {
-    const syncFullscreenState = () => {
-      const video = videoRef.current;
-      const isFullscreenNow =
-        Boolean(document.fullscreenElement) ||
-        Boolean(video?.webkitDisplayingFullscreen);
-      setIsFullscreen(isFullscreenNow);
-      if (!isFullscreenNow && video && !video.paused) {
-        video.pause();
-        setIsPlaying(false);
-      }
-    };
-
-    document.addEventListener("fullscreenchange", syncFullscreenState);
-    const video = videoRef.current;
-    if (video) {
-      video.addEventListener("webkitbeginfullscreen", syncFullscreenState);
-      video.addEventListener("webkitendfullscreen", syncFullscreenState);
-    }
-    return () => {
-      document.removeEventListener("fullscreenchange", syncFullscreenState);
-      const v = videoRef.current;
-      if (v) {
-        v.removeEventListener("webkitbeginfullscreen", syncFullscreenState);
-        v.removeEventListener("webkitendfullscreen", syncFullscreenState);
-      }
-    };
-  }, [currentVideoIndex]);
-
-  useEffect(() => {
     return () => {
       if (pauseIconTimeoutRef.current) clearTimeout(pauseIconTimeoutRef.current);
     };
   }, []);
-
-  const enterFullscreen = () => {
-    const container = videoContainerRef.current;
-    const video = videoRef.current;
-    if (container?.requestFullscreen) {
-      container.requestFullscreen().catch(() => {});
-    } else if (video?.webkitEnterFullscreen) {
-      video.webkitEnterFullscreen();
-    }
-  };
-
-  const exitFullscreen = () => {
-    const video = videoRef.current;
-    if (document.fullscreenElement && document.exitFullscreen) {
-      document.exitFullscreen().catch(() => {});
-    }
-    if (video?.webkitDisplayingFullscreen && video.webkitExitFullscreen) {
-      video.webkitExitFullscreen();
-    }
-  };
 
   const flashPauseIcon = () => {
     setShowPauseIcon(true);
@@ -160,7 +108,6 @@ const VideoStep = ({
       v._midPaused = true;
       v.pause();
       setMidPauseShown(true);
-      exitFullscreen();
     }
 
     if (onWatchProgress && v._watchedSec - lastReportSecRef.current >= REPORT_INTERVAL_SEC) {
@@ -175,7 +122,6 @@ const VideoStep = ({
     setMidPauseShown(false);
     v.play();
     setIsPlaying(true);
-    enterFullscreen();
   };
 
   const handleVideoEnded = () => {
@@ -188,7 +134,6 @@ const VideoStep = ({
       const threshold = actualDuration > 0 ? actualDuration : requiredSec;
 
       if (watchedSec < threshold * 0.99) {
-        exitFullscreen();
         const fmt = (s) => `${Math.floor(s / 60)}分${Math.round(s % 60)}秒`;
         if (v) {
           v._watchedSec = 0;
@@ -204,7 +149,6 @@ const VideoStep = ({
 
       if (v) v._watchedSec = 0;
       setProgress(100);
-      exitFullscreen();
       onVideoComplete((prev) => [...prev, currentVideo.id]);
     }
   };
@@ -220,14 +164,12 @@ const VideoStep = ({
       setMidPauseShown(false);
       v.play();
       setIsPlaying(true);
-      enterFullscreen();
       flashPauseIcon();
       return;
     }
     if (isPlaying) {
       v.pause();
       setIsPlaying(false);
-      exitFullscreen();
     } else {
       if (!videoStartTimesRef.current[currentVideo.id]) {
         const startTime = Date.now();
@@ -236,7 +178,6 @@ const VideoStep = ({
       }
       v.play();
       setIsPlaying(true);
-      enterFullscreen();
       flashPauseIcon();
     }
   };
@@ -245,7 +186,6 @@ const VideoStep = ({
     if (currentVideoIndex < activePlaylist.length - 1) {
       shouldAutoPlayRef.current = true;
       setCurrentVideoIndex((prev) => prev + 1);
-      enterFullscreen();
     }
   };
 
@@ -316,7 +256,7 @@ const VideoStep = ({
       </div>
       <div className="flex flex-col md:flex-row w-full gap-6 mb-6">
         <div className="flex-1 bg-gray-900 rounded-lg overflow-hidden shadow-lg flex flex-col">
-          <div ref={videoContainerRef} className="aspect-video relative flex items-center justify-center bg-gray-800 cursor-pointer flex-grow" onClick={togglePlay}>
+          <div className="aspect-video relative flex items-center justify-center bg-gray-800 cursor-pointer flex-grow" onClick={togglePlay}>
             {currentVideo.url ? (
               <video
                 ref={videoRef}
@@ -376,15 +316,6 @@ const VideoStep = ({
                   <RotateCcw size={12} className="mr-1" /> もう一度見る
                 </button>
               </div>
-            )}
-            {isFullscreen && (
-              <button
-                onClick={(e) => { e.stopPropagation(); exitFullscreen(); }}
-                className="absolute bottom-3 right-3 z-30 bg-black/50 hover:bg-black/70 text-white p-2 rounded-lg transition-colors"
-                aria-label="全画面解除"
-              >
-                <Minimize2 size={20} />
-              </button>
             )}
             <div className="absolute top-4 left-4 z-10">
               <span className="bg-black/50 text-white text-xs px-2 py-1 rounded border border-white/20">
