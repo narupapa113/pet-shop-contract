@@ -46,14 +46,15 @@ Deno.serve(async (req: Request) => {
 
     await supabase.from("otp_codes").update({ used: true }).eq("id", otpRow.id);
 
-    // ステータスを2（認証済）に更新
+    const deviceToken = crypto.randomUUID();
+
     await supabase
       .from("onetime_url_manage")
-      .update({ status: 2, update_at: new Date().toISOString() })
+      .update({ status: 2, device_token: deviceToken, update_at: new Date().toISOString() })
       .eq("id", onetimeId);
 
     return new Response(
-      JSON.stringify({ ok: true }),
+      JSON.stringify({ ok: true, deviceToken }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
