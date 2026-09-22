@@ -63,7 +63,11 @@ const OtpAuthScreen = ({ onetimeId, sendTo, onVerified }) => {
     setError("");
     setLoading(true);
     try {
-      await callEdge("verify-otp", { onetimeId, phone, code });
+      const res = await callEdge("verify-otp", { onetimeId, phone, code });
+      const token = res.deviceToken;
+      if (token) {
+        localStorage.setItem(`device_token_${onetimeId}`, token);
+      }
       onVerified(phone);
     } catch (e) {
       setError(e.message);
@@ -178,7 +182,8 @@ const OnetimeUrlPage = ({ onetimeId }) => {
       const allVideoIds = foundFlow.steps.flatMap((s) => s.videoIds || []);
       const videos = await loadVideosByIds(allVideoIds);
       setVideoPlaylist(videos);
-      if (data.status >= 2) {
+      const localToken = localStorage.getItem(`device_token_${onetimeId}`);
+      if (data.status >= 2 && localToken && data.device_token && localToken === data.device_token) {
         setPhase("flow");
       } else {
         setPhase("auth");
