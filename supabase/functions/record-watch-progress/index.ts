@@ -17,7 +17,7 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { sessionKey, flowId, videoId, watchedSec } = await req.json();
+    const { sessionKey, flowId, videoId, watchedSec, onetimeId, deviceToken } = await req.json();
 
     if (!sessionKey || !videoId) {
       return new Response(
@@ -26,7 +26,28 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // required_sec はクライアントから受け取らず、DBの videos.video_time から取得する
+    // 顧客側(onetimeIdあり)の場合はデバイストークンを検証
+    if (onetimeId) {
+      if (!deviceToken) {
+        return new Response(
+          JSON.stringify({ error: "デバイストークンが必要です" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const { data: urlRow } = await supabase
+        .from("onetime_url_manage")
+        .select("device_token")
+        .eq("id", onetimeId)
+        .maybeSingle();
+
+      if (!urlRow || !urlRow.device_token || urlRow.device_token !== deviceToken) {
+        return new Response(
+          JSON.stringify({ error: "デバイス認証エラー: この端末では操作できません" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
     const { data: videoRow } = await supabase
       .from("videos")
       .select("video_time")
@@ -34,7 +55,6 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     const requiredSec = videoRow?.video_time ?? 0;
-
     const completed = requiredSec > 0 && watchedSec >= requiredSec;
 
     const { error } = await supabase

@@ -24,11 +24,8 @@ const callEdge = async (fn, body) => {
   return json;
 };
 
-const updateOnetimeStatus = async (id, status) => {
-  await supabase
-    .from("onetime_url_manage")
-    .update({ status, update_at: new Date().toISOString() })
-    .eq("id", id);
+const updateOnetimeStatus = async (id, status, deviceToken, extra = {}) => {
+  await callEdge("update-onetime-status", { onetimeId: id, status, deviceToken, ...extra });
 };
 
 // ---- OTP認証画面 ----
@@ -154,7 +151,7 @@ const OtpAuthScreen = ({ onetimeId, sendTo, onVerified }) => {
 
 // ---- メインページ ----
 const OnetimeUrlPage = ({ onetimeId }) => {
-  const [phase, setPhase] = useState("loading"); // loading | auth | flow | done | error
+  const [phase, setPhase] = useState("loading"); // loading | auth | already_verified | flow | done | error
   const [urlRecord, setUrlRecord] = useState(null);
   const [flow, setFlow] = useState(null);
   const [videoPlaylist, setVideoPlaylist] = useState([]);
@@ -165,6 +162,8 @@ const OnetimeUrlPage = ({ onetimeId }) => {
   });
   const [watchedVideosByStep, setWatchedVideosByStep] = useState({});
   const watchedVideoIds = watchedVideosByStep[currentStepIndex] || [];
+  const [deviceToken, setDeviceToken] = useState(null);
+  const [sessionKey] = useState(() => crypto.randomUUID());
 
   useEffect(() => {
     (async () => {
@@ -184,7 +183,10 @@ const OnetimeUrlPage = ({ onetimeId }) => {
       setVideoPlaylist(videos);
       const localToken = localStorage.getItem(`device_token_${onetimeId}`);
       if (data.status >= 2 && localToken && data.device_token && localToken === data.device_token) {
+        setDeviceToken(localToken);
         setPhase("flow");
+      } else if (data.status >= 2) {
+        setPhase("already_verified");
       } else {
         setPhase("auth");
       }
@@ -192,6 +194,8 @@ const OnetimeUrlPage = ({ onetimeId }) => {
   }, [onetimeId]);
 
   const handleVerified = async (phone) => {
+    const token = localStorage.getItem(`device_token_${onetimeId}`);
+    setDeviceToken(token);
     setCustomerData((prev) => ({ ...prev, phone }));
     setPhase("flow");
   };
@@ -210,6 +214,25 @@ const OnetimeUrlPage = ({ onetimeId }) => {
         <div className="bg-white rounded-2xl shadow p-8 text-center max-w-sm">
           <p className="text-gray-700 font-bold text-lg mb-2">URLが無効です</p>
           <p className="text-gray-500 text-sm">このURLは存在しないか、有効期限が切れています。</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === "already_verified") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <div className="bg-white rounded-2xl shadow p-8 text-center max-w-sm w-full">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <ShieldCheck size={32} className="text-gray-400" />
+          </div>
+          <p className="text-gray-800 font-bold text-lg mb-2">このURLは認証済みです</p>
+          <p className="text-gray-500 text-sm mb-2">
+            このURLはすでに別の端末で認証されているため、この端末では利用できません。
+          </p>
+          <p className="text-gray-400 text-xs">
+            お手数ですが、店舗スタッフにお問い合わせください。
+          </p>
         </div>
       </div>
     );
@@ -258,7 +281,7 @@ const OnetimeUrlPage = ({ onetimeId }) => {
 
     if (currentStep.type === "VIDEO") {
       setCustomerData((prev) => ({ ...prev, checkVideo: false }));
-      await updateOnetimeStatus(onetimeId, 3);
+      await updateOnetimeStatus(onetimeId, 3, deviceToken);
     }
 
     if (currentStep.type === "CUSTOMER_INFO") {
@@ -276,10 +299,7 @@ const OnetimeUrlPage = ({ onetimeId }) => {
         .select("id")
         .maybeSingle();
       if (data?.id) {
-        await supabase
-          .from("onetime_url_manage")
-          .update({ customer_id: data.id, update_at: new Date().toISOString() })
-          .eq("id", onetimeId);
+        await updateOnetimeStatus(onetimeId, 4, deviceToken, { customerId: data.id });
 
         // 電話番号重複チェック → status 決定
         let finalStatus = 4;
@@ -311,7 +331,7 @@ const OnetimeUrlPage = ({ onetimeId }) => {
           }
         }
       }
-      await updateOnetimeStatus(onetimeId, 4);
+      await updateOnetimeStatus(onetimeId, 4, deviceToken);
       setPhase("done");
       return;
     }
@@ -341,6 +361,16 @@ const OnetimeUrlPage = ({ onetimeId }) => {
             videoPlaylist={videoPlaylist}
             stepConfig={currentStep}
             completedVideoIds={watchedVideoIds}
+            onWatchProgress={async ({ videoId, watchedSec }) => {
+              try {
+                await callEdge("record-watch-progress", {
+                  sessionKey, flowId: flow.id, videoId, watchedSec,
+                  onetimeId, deviceToken,
+                });
+              } catch (e) {
+                console.error("視聴進捗の記録に失敗:", e);
+              }
+            }}
             onVideoComplete={(updater) => {
               setWatchedVideosByStep((prev) => {
                 const current = prev[currentStepIndex] || [];

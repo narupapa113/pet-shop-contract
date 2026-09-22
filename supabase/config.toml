@@ -27,3 +27,6 @@ verify_jwt = false
 
 [functions.delete-onetime-url]
 verify_jwt = false
+
+[functions.update-onetime-status]
+verify_jwt = false

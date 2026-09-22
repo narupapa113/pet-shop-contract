@@ -17,13 +17,35 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { sessionKey, flowId, requiredVideoIds } = await req.json();
+    const { sessionKey, flowId, requiredVideoIds, onetimeId, deviceToken } = await req.json();
 
     if (!sessionKey || !Array.isArray(requiredVideoIds) || requiredVideoIds.length === 0) {
       return new Response(
         JSON.stringify({ error: "sessionKey and requiredVideoIds are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
+    }
+
+    // 顧客側(onetimeIdあり)の場合はデバイストークンを検証
+    if (onetimeId) {
+      if (!deviceToken) {
+        return new Response(
+          JSON.stringify({ error: "デバイストークンが必要です" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const { data: urlRow } = await supabase
+        .from("onetime_url_manage")
+        .select("device_token")
+        .eq("id", onetimeId)
+        .maybeSingle();
+
+      if (!urlRow || !urlRow.device_token || urlRow.device_token !== deviceToken) {
+        return new Response(
+          JSON.stringify({ error: "デバイス認証エラー: この端末では操作できません" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     const { data: sessions, error: fetchError } = await supabase
