@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Settings, FileText, Plus, Trash2, Upload, LogOut, Users, ChartBar as BarChart3, Calendar, Save, CircleCheck as CheckCircle, CreditCard as Edit2, Film, X, ArrowUp, ArrowDown, MoveVertical as MoreVertical, History, User, Phone, Mail, Play, Link, Smartphone, List, LayoutDashboard, Briefcase, Shield, Search, ChevronRight, ChevronDown, RotateCcw, TriangleAlert as AlertTriangle } from "lucide-react";
+import { Settings, FileText, Plus, Trash2, Upload, LogOut, Users, ChartBar as BarChart3, Calendar, Save, CircleCheck as CheckCircle, CreditCard as Edit2, Film, X, ArrowUp, ArrowDown, MoveVertical as MoreVertical, History, User, Phone, Mail, Play, Link, Smartphone, List, LayoutDashboard, Briefcase, Shield, Search, ChevronRight, ChevronDown, RotateCcw, TriangleAlert as AlertTriangle, ChevronLeft } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { STEP_TYPES, DEFAULT_TEMPLATES } from "../constants";
 import ContractPreviewStep from "../components/ContractPreviewStep";
@@ -1281,6 +1281,8 @@ const deleteCustomer = async (id) => {
   const [historyStatusFilter, setHistoryStatusFilter] = useState("all");
   const [historyPreviewLoading, setHistoryPreviewLoading] = useState(null); // row id
   const [historyPreviewData, setHistoryPreviewData] = useState(null); // ContractPreviewStep props
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPageSize, setHistoryPageSize] = useState(20);
 
   const openHistoryPreview = async (h) => {
     setHistoryPreviewLoading(h.id);
@@ -2761,20 +2763,34 @@ const deleteCustomer = async (id) => {
                   <button onClick={fetchSignHistory} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-medium transition-colors">更新</button>
                 </div>
               </div>
-              <div className="flex gap-2">
-                {[
-                  { key: "all", label: "一覧" },
-                  { key: "incomplete", label: "未完了" },
-                  { key: "completed", label: "完了" },
-                ].map((tab) => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setHistoryStatusFilter(tab.key)}
-                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${historyStatusFilter === tab.key ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+              <div className="flex justify-between items-center flex-wrap gap-3">
+                <div className="flex gap-2">
+                  {[
+                    { key: "all", label: "一覧" },
+                    { key: "incomplete", label: "未完了" },
+                    { key: "completed", label: "完了" },
+                  ].map((tab) => (
+                    <button
+                      key={tab.key}
+                      onClick={() => { setHistoryStatusFilter(tab.key); setHistoryPage(1); }}
+                      className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${historyStatusFilter === tab.key ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <span>表示件数</span>
+                  {[20, 50, 100].map((size) => (
+                    <button
+                      key={size}
+                      onClick={() => { setHistoryPageSize(size); setHistoryPage(1); }}
+                      className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${historyPageSize === size ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                    >
+                      {size}件
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
             {signHistoryLoading ? (
@@ -2793,8 +2809,8 @@ const deleteCustomer = async (id) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {signHistoryList
-                      .filter((h) => {
+                    {(() => {
+                      const filtered = signHistoryList.filter((h) => {
                         if (historyStatusFilter === "incomplete" && h.status === 3) return false;
                         if (historyStatusFilter === "completed" && h.status !== 3) return false;
                         if (!signHistorySearch) return true;
@@ -2804,8 +2820,13 @@ const deleteCustomer = async (id) => {
                           (h.customers?.name || "").toLowerCase().includes(q) ||
                           (h.customers?.name_kana || "").toLowerCase().includes(q)
                         );
-                      })
-                      .map((h) => {
+                      });
+                      const totalPages = Math.max(1, Math.ceil(filtered.length / historyPageSize));
+                      const safePage = Math.min(historyPage, totalPages);
+                      const pageData = filtered.slice((safePage - 1) * historyPageSize, safePage * historyPageSize);
+                      return { filtered, totalPages, safePage, pageData };
+                    })()
+                      .pageData.map((h) => {
                         const statusInfo = h.status === 1
                           ? { label: "進行中", cls: "bg-yellow-100 text-yellow-700 border-yellow-200" }
                           : h.status === 2
@@ -2856,13 +2877,85 @@ const deleteCustomer = async (id) => {
                         </tr>
                         );
                       })}
-                    {signHistoryList.length === 0 && (
-                      <tr><td colSpan={6} className="px-5 py-16 text-center text-gray-400">契約履歴がありません</td></tr>
-                    )}
+                    {(() => {
+                      const filtered = signHistoryList.filter((h) => {
+                        if (historyStatusFilter === "incomplete" && h.status === 3) return false;
+                        if (historyStatusFilter === "completed" && h.status !== 3) return false;
+                        if (!signHistorySearch) return true;
+                        const q = signHistorySearch.toLowerCase();
+                        return (
+                          (h.contract_name || "").toLowerCase().includes(q) ||
+                          (h.customers?.name || "").toLowerCase().includes(q) ||
+                          (h.customers?.name_kana || "").toLowerCase().includes(q)
+                        );
+                      });
+                      const totalPages = Math.max(1, Math.ceil(filtered.length / historyPageSize));
+                      const safePage = Math.min(historyPage, totalPages);
+                      if (filtered.length === 0) {
+                        return <tr><td colSpan={6} className="px-5 py-16 text-center text-gray-400">契約履歴がありません</td></tr>;
+                      }
+                      return null;
+                    })()}
                   </tbody>
                 </table>
               </div>
             )}
+            {(() => {
+              if (signHistoryLoading || signHistoryList.length === 0) return null;
+              const filtered = signHistoryList.filter((h) => {
+                if (historyStatusFilter === "incomplete" && h.status === 3) return false;
+                if (historyStatusFilter === "completed" && h.status !== 3) return false;
+                if (!signHistorySearch) return true;
+                const q = signHistorySearch.toLowerCase();
+                return (
+                  (h.contract_name || "").toLowerCase().includes(q) ||
+                  (h.customers?.name || "").toLowerCase().includes(q) ||
+                  (h.customers?.name_kana || "").toLowerCase().includes(q)
+                );
+              });
+              const totalPages = Math.max(1, Math.ceil(filtered.length / historyPageSize));
+              const safePage = Math.min(historyPage, totalPages);
+              const startIdx = (safePage - 1) * historyPageSize + 1;
+              const endIdx = Math.min(safePage * historyPageSize, filtered.length);
+              return (
+                <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 flex-wrap gap-3">
+                  <p className="text-sm text-gray-500">
+                    {filtered.length}件中 {startIdx}〜{endIdx}件を表示
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setHistoryPage(safePage - 1)}
+                      disabled={safePage <= 1}
+                      className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter((p) => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
+                      .map((p, idx, arr) => (
+                        <span key={p} className="flex items-center">
+                          {idx > 0 && arr[idx - 1] !== p - 1 && (
+                            <span className="px-1 text-gray-400">…</span>
+                          )}
+                          <button
+                            onClick={() => setHistoryPage(p)}
+                            className={`min-w-[36px] px-2 py-1.5 rounded-lg text-sm font-medium transition-colors ${p === safePage ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-100"}`}
+                          >
+                            {p}
+                          </button>
+                        </span>
+                      ))}
+                    <button
+                      onClick={() => setHistoryPage(safePage + 1)}
+                      disabled={safePage >= totalPages}
+                      className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
