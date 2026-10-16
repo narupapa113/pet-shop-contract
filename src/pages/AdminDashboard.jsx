@@ -605,20 +605,60 @@ const AdminDashboard = ({
   const [deletedContents, setDeletedContents] = useState([]);
   const [deletedContentsLoading, setDeletedContentsLoading] = useState(false);
   const [showDeletedContentsModal, setShowDeletedContentsModal] = useState(false);
+  const [deletedVideoThumbs, setDeletedVideoThumbs] = useState({});
 
   const fetchDeletedContents = useCallback(async () => {
     setDeletedContentsLoading(true);
+    setDeletedVideoThumbs({});
     if (contentTab === "video") {
       const { data } = await supabase.from("videos").select("*").eq("is_deleted", true).eq("store_id", storeId).order("deleted_at", { ascending: false });
-      setDeletedContents(data || []);
+      const items = await Promise.all((data || []).map(async (v) => {
+        let url = null;
+        if (v.path) {
+          const { data: signed } = await supabase.storage.from("videos").createSignedUrl(v.path, 3600);
+          url = signed?.signedUrl || null;
+        }
+        return { ...v, url };
+      }));
+      setDeletedContents(items);
     } else {
       const { data } = await supabase.from("files").select("*").eq("is_deleted", true).eq("store_id", storeId).order("deleted_at", { ascending: false });
-      setDeletedContents(data || []);
+      const items = (data || []).map((f) => {
+        const thumbPath = f.path ? `thumbnails/${f.path.replace(/\.[^.]+$/, "")}.jpg` : null;
+        return { ...f, thumbnailPath: thumbPath };
+      });
+      setDeletedContents(items);
     }
     setDeletedContentsLoading(false);
   }, [contentTab, storeId]);
 
-  useEffect(() => { setDeletedContents([]); }, [contentTab]);
+  useEffect(() => { setDeletedContents([]); setDeletedVideoThumbs({}); }, [contentTab]);
+
+  // 削除済みモーダル開閉時に動画サムネイルを遅延生成
+  useEffect(() => {
+    if (!showDeletedContentsModal || contentTab !== "video") return;
+    let cancelled = false;
+    deletedContents.forEach((item) => {
+      if (!item.url || deletedVideoThumbs[item.id]) return;
+      const video = document.createElement("video");
+      video.crossOrigin = "anonymous";
+      video.preload = "metadata";
+      video.muted = true;
+      video.onloadedmetadata = () => { video.currentTime = 0.5; };
+      video.onseeked = () => {
+        if (cancelled) return;
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth || 320;
+        canvas.height = video.videoHeight || 180;
+        canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+        try {
+          setDeletedVideoThumbs((prev) => ({ ...prev, [item.id]: canvas.toDataURL("image/jpeg") }));
+        } catch (_) {}
+      };
+      video.src = item.url;
+    });
+    return () => { cancelled = true; };
+  }, [showDeletedContentsModal, contentTab, deletedContents, deletedVideoThumbs]);
 
   // --- フロー管理 ---
   const [editingFlowId, setEditingFlowId] = useState(null);
@@ -2468,32 +2508,47 @@ const deleteCustomer = async (id) => {
             {/* 削除済みアイテム復元モーダル */}
             {showDeletedContentsModal && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-                  <div className="p-6 border-b flex justify-between items-center">
-                    <h3 className="text-xl font-bold text-gray-800">削除済み{contentTab === "video" ? "動画" : "ドキュメント"}一覧</h3>
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col">
+                  <div className="p-4 sm:p-6 border-b flex justify-between items-center flex-shrink-0">
+                    <h3 className="text-lg sm:text-xl font-bold text-gray-800">削除済み{contentTab === "video" ? "動画" : "ドキュメント"}一覧</h3>
                     <button onClick={() => setShowDeletedContentsModal(false)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-6">
+                  <div className="flex-1 overflow-y-auto p-4 sm:p-6">
                     {deletedContentsLoading ? (
                       <p className="text-center text-gray-400 py-8">読み込み中...</p>
                     ) : deletedContents.length === 0 ? (
                       <p className="text-center text-gray-400 py-8">削除済みの{contentTab === "video" ? "動画" : "ドキュメント"}はありません。</p>
                     ) : (
-                      <div className="space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                         {deletedContents.map((item) => (
-                          <div key={item.id} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium text-gray-800 truncate">{item.name}</p>
-                              <p className="text-xs text-gray-400 mt-0.5">削除日時: {item.deleted_at ? new Date(item.deleted_at).toLocaleString("ja-JP") : "不明"}</p>
+                          <div key={item.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
+                            <div className="aspect-video bg-gray-100 border-b overflow-hidden relative">
+                              {contentTab === "video" ? (
+                                deletedVideoThumbs[item.id] ? (
+                                  <img src={deletedVideoThumbs[item.id]} alt={item.name} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center bg-gray-800">
+                                    <Film size={32} className="text-gray-500" />
+                                  </div>
+                                )
+                              ) : (
+                                <PdfCardThumbnail path={item.path} thumbnailPath={item.thumbnailPath} />
+                              )}
                             </div>
-                            {can(adminPermissions, contentTab === "video" ? 6 : 7, 3) && (
-                              <button
-                                onClick={() => restoreContent(item.id)}
-                                className="ml-4 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg font-medium hover:bg-blue-700 flex items-center flex-shrink-0"
-                              >
-                                <RotateCcw size={14} className="mr-1" /> 復元
-                              </button>
-                            )}
+                            <div className="p-4 flex-1 flex flex-col">
+                              <h4 className="font-bold text-gray-800 mb-1 truncate">{item.name}</h4>
+                              <p className="text-xs text-gray-400 mb-3">削除日時: {item.deleted_at ? new Date(item.deleted_at).toLocaleString("ja-JP") : "不明"}</p>
+                              <div className="flex justify-end mt-auto border-t pt-3">
+                                {can(adminPermissions, contentTab === "video" ? 6 : 7, 3) && (
+                                  <button
+                                    onClick={() => restoreContent(item.id)}
+                                    className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg font-medium hover:bg-blue-700 flex items-center flex-shrink-0"
+                                  >
+                                    <RotateCcw size={14} className="mr-1" /> 復元
+                                  </button>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         ))}
                       </div>
