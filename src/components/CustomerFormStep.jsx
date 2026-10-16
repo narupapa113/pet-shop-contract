@@ -10,7 +10,7 @@ const validatePhone = (phone) => {
   return null;
 };
 
-const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemote, sessionCustomerId }) => {
+const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemote, sessionCustomerId, storeId }) => {
   const [errors, setErrors] = useState({});
   // phase: null | "searching" | "duplicate_found" | "handed_to_staff" | "staff_confirm" | "show_existing"
   const [dupPhase, setDupPhase] = useState(null);
@@ -49,7 +49,7 @@ const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemot
     // 電話番号重複チェック
     setDupPhase("searching");
     try {
-      const existing = await findCustomerByPhone(supabase, data.phone);
+      const existing = await findCustomerByPhone(supabase, data.phone, storeId);
       if (existing) {
         if (isRemote) {
           // リモートモード: 重複が見つかってもお客様には一切警告を見せず、そのまま次へ進む

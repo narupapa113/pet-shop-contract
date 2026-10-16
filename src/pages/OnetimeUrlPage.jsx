@@ -306,7 +306,7 @@ const OnetimeUrlPage = ({ onetimeId }) => {
         const phone = customerData.phone?.trim() || null;
         if (phone) {
           try {
-            const existing = await findCustomerByPhone(supabase, phone);
+            const existing = await findCustomerByPhone(supabase, phone, urlRecord?.store_id);
             if (existing) finalStatus = 2;
           } catch (e) {
             console.error("電話番号重複チェックエラー:", e);
@@ -389,6 +389,7 @@ const OnetimeUrlPage = ({ onetimeId }) => {
             onPrev={prevStep}
             submitLabel="送信する"
             isRemote={true}
+            storeId={urlRecord?.store_id}
           />
         );
       default:
