@@ -158,6 +158,8 @@ const UserManagement = ({ adminPermissions, storeId }) => {
   // 編集モーダル用 state
   const [editTarget, setEditTarget] = useState(null);
   const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editEmailConfirm, setEditEmailConfirm] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
 
@@ -268,6 +270,8 @@ const UserManagement = ({ adminPermissions, storeId }) => {
   const openEditModal = (user) => {
     setEditTarget(user);
     setEditName(user.name || "");
+    setEditEmail("");
+    setEditEmailConfirm("");
     setEditError("");
   };
 
@@ -276,6 +280,18 @@ const UserManagement = ({ adminPermissions, storeId }) => {
     if (!can(adminPermissions, 10, 3)) return;
     const trimmed = editName.trim();
     if (!trimmed) { setEditError("名前を入力してください"); return; }
+    const trimmedEmail = editEmail.trim();
+    const trimmedEmailConfirm = editEmailConfirm.trim();
+    if (trimmedEmail || trimmedEmailConfirm) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+        setEditError("メールアドレスの形式が正しくありません");
+        return;
+      }
+      if (trimmedEmail !== trimmedEmailConfirm) {
+        setEditError("確認用メールアドレスが一致しません");
+        return;
+      }
+    }
     setEditSaving(true);
     setEditError("");
     try {
@@ -286,6 +302,22 @@ const UserManagement = ({ adminPermissions, storeId }) => {
         .update({ name: trimmed, update_at: now })
         .eq("id", editTarget.id);
       if (updErr) throw new Error(updErr.message);
+
+      if (trimmedEmail && trimmedEmail !== editTarget.email) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/update-user-email`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session?.access_token}`,
+            "Apikey": import.meta.env.VITE_SUPABASE_ANON_KEY || "",
+          },
+          body: JSON.stringify({ userId: editTarget.id, newEmail: trimmedEmail, storeId }),
+        });
+        const json = await res.json();
+        if (!res.ok || json.error) throw new Error(json.error || "メールアドレスの変更に失敗しました");
+      }
+
       setEditTarget(null);
       await fetchUsers();
     } catch (err) {
@@ -357,7 +389,7 @@ const UserManagement = ({ adminPermissions, storeId }) => {
                           <button
                             onClick={() => openEditModal(u)}
                             className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="名前編集"
+                            title="編集"
                           >
                             <Pencil size={15} />
                           </button>
@@ -425,12 +457,12 @@ const UserManagement = ({ adminPermissions, storeId }) => {
         </div>
       )}
 
-      {/* 名前編集モーダル */}
+      {/* アカウント編集モーダル */}
       {editTarget && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b flex justify-between items-center">
-              <h3 className="text-lg font-bold text-gray-800">アカウント名の編集</h3>
+              <h3 className="text-lg font-bold text-gray-800">アカウント編集</h3>
               <button onClick={() => setEditTarget(null)} className="text-gray-400 hover:text-gray-600" disabled={editSaving}>
                 <X size={22} />
               </button>
@@ -440,7 +472,7 @@ const UserManagement = ({ adminPermissions, storeId }) => {
                 <div className="bg-red-50 border border-red-200 text-red-600 rounded-lg px-4 py-3 text-sm">{editError}</div>
               )}
               <div className="bg-gray-50 rounded-lg px-4 py-3 text-sm text-gray-600">
-                <p>メールアドレス: <span className="font-medium text-gray-800">{editTarget.email || "—"}</span></p>
+                <p>現在のメールアドレス: <span className="font-medium text-gray-800">{editTarget.email || "—"}</span></p>
                 <p>役割: <span className="font-medium text-gray-800">{getRoleName(editTarget)}</span></p>
               </div>
               <div>
@@ -452,6 +484,34 @@ const UserManagement = ({ adminPermissions, storeId }) => {
                   className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
                   placeholder="例：山田 太郎"
                 />
+              </div>
+              <div className="border-t border-gray-100 pt-4">
+                <p className="text-sm font-medium text-gray-700 mb-2">メールアドレス変更（任意）</p>
+                <p className="text-xs text-gray-400 mb-3">変更する場合のみ入力してください。変更後は新しいメールアドレスでログインします。</p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">新しいメールアドレス</label>
+                    <input
+                      type="email"
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                      className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                      placeholder="new@example.com"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">新しいメールアドレス（確認用）</label>
+                    <input
+                      type="email"
+                      value={editEmailConfirm}
+                      onChange={(e) => setEditEmailConfirm(e.target.value)}
+                      className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                      placeholder="new@example.com"
+                      autoComplete="off"
+                    />
+                  </div>
+                </div>
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setEditTarget(null)}
