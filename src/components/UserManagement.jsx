@@ -519,7 +519,7 @@ const UserManagement = ({ adminPermissions, storeId }) => {
                   <option value="">役割を選択してください</option>
                   {roles.map((r) => (
                     <option key={r.id} value={r.id}>
-                      {r.auth_name}（{r.has_permission ? "権限あり" : "権限なし"}）
+                      {r.auth_name}（{r.has_permission ? "管理画面へのアクセス可" : "管理画面へのアクセス不可"}）
                     </option>
                   ))}
                 </select>
