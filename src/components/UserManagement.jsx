@@ -173,21 +173,19 @@ const UserManagement = ({ adminPermissions, storeId }) => {
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: adminsData }, { data: usersData }, { data: authList }] = await Promise.all([
-        supabase.from("admins").select("id, name, create_at, auth_id").contains("store_id", [storeId]),
-        supabase.from("users").select("id, name, create_at").eq("store_id", storeId),
-        supabase.auth.admin.listUsers({ perPage: 1000 }),
-      ]);
-
-      const authMap = {};
-      (authList?.users || []).forEach((u) => { authMap[u.id] = u.email; });
-
-      const combined = [
-        ...(adminsData || []).map((a) => ({ ...a, role: "admin", email: authMap[a.id] || "" })),
-        ...(usersData || []).map((u) => ({ ...u, role: "staff", email: authMap[u.id] || "" })),
-      ].sort((a, b) => new Date(b.create_at) - new Date(a.create_at));
-
-      setUsers(combined);
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/list-users`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}`,
+          "Apikey": import.meta.env.VITE_SUPABASE_ANON_KEY || "",
+        },
+        body: JSON.stringify({ storeId }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) throw new Error(json.error || "ユーザー一覧の取得に失敗しました");
+      setUsers(json.users || []);
     } catch (e) {
       console.error("ユーザー取得エラー:", e);
     } finally {
