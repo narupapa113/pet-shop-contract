@@ -269,7 +269,7 @@ const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemot
     <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-md">
       <h2 className="text-2xl font-bold mb-6 text-gray-800">お客様情報の入力</h2>
       <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">お名前 (フルネーム) <span className="ml-1 inline-block text-xs text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 leading-none align-middle">必須</span></label>
             <input type="text" name="name" value={data.name} onChange={onChange} className={fieldClass("name")} placeholder="山田 太郎" />
