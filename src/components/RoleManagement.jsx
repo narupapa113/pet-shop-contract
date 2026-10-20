@@ -254,7 +254,7 @@ const RoleManagement = ({ adminPermissions }) => {
                 <div>
                   <p className="font-semibold text-gray-800 text-sm">{role.auth_name}</p>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {role.has_permission ? "権限あり（管理者ロール）" : "権限なし（スタッフ相当）"}
+                    {role.has_permission ? "管理画面へのアクセス可（管理者ロール）" : "管理画面へのアクセス不可（スタッフ相当）"}
                   </p>
                 </div>
               </div>
@@ -360,8 +360,8 @@ const RoleManagement = ({ adminPermissions }) => {
                   onChange={(e) => setNewHasPermission(e.target.value)}
                   className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm bg-white"
                 >
-                  <option value="true">権限あり（管理者ダッシュボードにアクセス可）</option>
-                  <option value="false">権限なし（スタッフ相当）</option>
+                  <option value="true">管理画面へのアクセス可（管理者ダッシュボード）</option>
+                  <option value="false">管理画面へのアクセス不可（スタッフ相当）</option>
                 </select>
                 <p className="text-xs text-gray-400 mt-1">作成後は変更できません。</p>
               </div>

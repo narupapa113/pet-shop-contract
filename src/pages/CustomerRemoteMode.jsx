@@ -130,32 +130,10 @@ const CustomerRemoteMode = ({ remoteSessionId, onComplete }) => {
     setWatchedVideoIds([]);
   }, [currentStepIndex]);
 
-  
-  const handleCustomerChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setCustomerData((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
-  };
-
-  const nextStep = () => {
-    if (currentStepIndex < remoteSteps.length - 1) {
-      if (currentStep.type === "VIDEO") {
-        setCustomerData((prev) => ({ ...prev, checkVideo: false }));
-      }
-      setCurrentStepIndex((prev) => prev + 1);
-    }
-  };
-
-  const prevStep = () => {
-    if (currentStepIndex > 0) setCurrentStepIndex((prev) => prev - 1);
-  };
-
   const callEdgeFn = async (fnName, body) => {
     const headers = {
       "Content-Type": "application/json",
-      "Apikey": import.meta.env.VITE_SUPABASE_ANON_KEY,
+      Apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
     };
     const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${fnName}`, {
       method: "POST",
@@ -185,7 +163,27 @@ const CustomerRemoteMode = ({ remoteSessionId, onComplete }) => {
     }
   };
 
-  // 「送信する」押下時に一括INSERT
+  const handleCustomerChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setCustomerData((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }));
+  };
+
+  const nextStep = () => {
+    if (currentStepIndex < remoteSteps.length - 1) {
+      if (currentStep.type === "VIDEO") {
+        setCustomerData((prev) => ({ ...prev, checkVideo: false }));
+      }
+      setCurrentStepIndex((prev) => prev + 1);
+    }
+  };
+
+  const prevStep = () => {
+    if (currentStepIndex > 0) setCurrentStepIndex((prev) => prev - 1);
+  };
+
   const handleFinish = async () => {
     try {
       const phone = customerData.phone?.trim() || null;
@@ -193,7 +191,7 @@ const CustomerRemoteMode = ({ remoteSessionId, onComplete }) => {
       let isPhoneDuplicate = false;
       if (phone) {
         try {
-          const existing = await findCustomerByPhone(supabase, phone);
+          const existing = await findCustomerByPhone(supabase, phone, storeId);
           isPhoneDuplicate = !!existing;
         } catch (e) {
           console.error("電話番号重複チェックエラー:", e);
@@ -302,6 +300,7 @@ const CustomerRemoteMode = ({ remoteSessionId, onComplete }) => {
             onNext={nextStep}
             onPrev={prevStep}
             isRemote={true}
+            storeId={storeId}
           />
         );
       case "SIGNATURE":
