@@ -271,29 +271,29 @@ const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemot
       <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">お名前 (フルネーム)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">お名前 (フルネーム) <span className="ml-1 inline-block text-xs text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 leading-none align-middle">必須</span></label>
             <input type="text" name="name" value={data.name} onChange={onChange} className={fieldClass("name")} placeholder="山田 太郎" />
             {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">フリガナ</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">フリガナ <span className="ml-1 inline-block text-xs text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 leading-none align-middle">必須</span></label>
             <input type="text" name="nameKana" value={data.nameKana} onChange={onChange} className={fieldClass("nameKana")} placeholder="ヤマダ タロウ" />
             {errors.nameKana && <p className="text-red-500 text-xs mt-1">{errors.nameKana}</p>}
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">ご住所</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">ご住所 <span className="ml-1 inline-block text-xs text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 leading-none align-middle">必須</span></label>
           <input type="text" name="address" value={data.address} onChange={onChange} className={fieldClass("address")} placeholder="東京都..." />
           {errors.address && <p className="text-red-500 text-xs mt-1">{errors.address}</p>}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">電話番号</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">電話番号 <span className="ml-1 inline-block text-xs text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 leading-none align-middle">必須</span></label>
             <input type="tel" name="phone" value={data.phone} onChange={onChange} className={fieldClass("phone")} placeholder="09012345678" />
             {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone}</p>}
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">メールアドレス</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">メールアドレス <span className="ml-1 inline-block text-xs text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 leading-none align-middle">必須</span></label>
             <input type="email" name="email" value={data.email} onChange={onChange} className={fieldClass("email")} placeholder="example@email.com" />
             {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
           </div>
