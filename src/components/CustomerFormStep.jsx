@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { ShieldCheck, TriangleAlert as AlertTriangle, UserCheck, Search } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { findCustomerByPhone } from "../lib/customer";
@@ -15,6 +15,20 @@ const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemot
   // phase: null | "searching" | "duplicate_found" | "handed_to_staff" | "staff_confirm" | "show_existing"
   const [dupPhase, setDupPhase] = useState(null);
   const [existingCustomer, setExistingCustomer] = useState(null);
+  const phoneRef = useRef(null);
+  const [focusPhoneAfterModal, setFocusPhoneAfterModal] = useState(false);
+
+  useEffect(() => {
+    if (focusPhoneAfterModal && dupPhase === null && phoneRef.current) {
+      phoneRef.current.focus();
+      setFocusPhoneAfterModal(false);
+    }
+  }, [focusPhoneAfterModal, dupPhase]);
+
+  const handleBackToInputFromCompare = () => {
+    setDupPhase(null);
+    setFocusPhoneAfterModal(true);
+  };
 
   const handleNext = async () => {
     const newErrors = {};
@@ -246,6 +260,14 @@ const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemot
                 はい（上書き）
               </button>
             </div>
+            <div className="text-center mt-4">
+              <button
+                onClick={handleBackToInputFromCompare}
+                className="text-sm text-gray-500 hover:text-gray-700 hover:underline"
+              >
+                入力画面に戻る
+              </button>
+            </div>
           </div>
         </div>
       </>
@@ -289,7 +311,7 @@ const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemot
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">電話番号 <span className="ml-1 inline-block text-xs text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 leading-none align-middle">必須</span></label>
-            <input type="tel" name="phone" value={data.phone} onChange={onChange} className={fieldClass("phone")} placeholder="09012345678" />
+            <input ref={phoneRef} type="tel" name="phone" value={data.phone} onChange={onChange} className={fieldClass("phone")} placeholder="09012345678" />
             {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone}</p>}
           </div>
           <div>
