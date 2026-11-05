@@ -60,7 +60,7 @@ const IncompleteListPage = ({ onBack, onResume, flows, staffTemplates, storeId }
     setMergeLoading(true);
     const phone = mergeTarget?.customers?.tell;
     if (phone) {
-      const existing = await findCustomerByPhone(supabase, phone);
+      const existing = await findCustomerByPhone(supabase, phone, storeId);
       setExistingCustomer(existing);
     }
     setMergeLoading(false);

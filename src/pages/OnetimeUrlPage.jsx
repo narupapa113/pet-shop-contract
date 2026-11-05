@@ -285,6 +285,18 @@ const OnetimeUrlPage = ({ onetimeId }) => {
     }
 
     if (currentStep.type === "CUSTOMER_INFO") {
+      // 電話番号重複チェック → status 決定（customers登録より前に行う）
+      let finalStatus = 4;
+      const phone = customerData.phone?.trim() || null;
+      if (phone) {
+        try {
+          const existing = await findCustomerByPhone(supabase, phone, urlRecord?.store_id);
+          if (existing) finalStatus = 2;
+        } catch (e) {
+          console.error("電話番号重複チェックエラー:", e);
+        }
+      }
+
       // customers INSERT + customer_id 紐付け + status 4（お客様情報送信済）
       const { data } = await supabase
         .from("customers")
@@ -300,18 +312,6 @@ const OnetimeUrlPage = ({ onetimeId }) => {
         .maybeSingle();
       if (data?.id) {
         await updateOnetimeStatus(onetimeId, 4, deviceToken, { customerId: data.id });
-
-        // 電話番号重複チェック → status 決定
-        let finalStatus = 4;
-        const phone = customerData.phone?.trim() || null;
-        if (phone) {
-          try {
-            const existing = await findCustomerByPhone(supabase, phone);
-            if (existing) finalStatus = 2;
-          } catch (e) {
-            console.error("電話番号重複チェックエラー:", e);
-          }
-        }
 
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         const contractIdValue = uuidRegex.test(flow.id) ? flow.id : null;
@@ -389,6 +389,7 @@ const OnetimeUrlPage = ({ onetimeId }) => {
             onPrev={prevStep}
             submitLabel="送信する"
             isRemote={true}
+            storeId={urlRecord?.store_id}
           />
         );
       default:

@@ -431,7 +431,7 @@ const CustomerServiceMode = ({
     setStaffFields((prev) => prev.map((field) => (field.id === id ? { ...field, label: newLabel } : field)));
   };
 
-    const handlePrint = () => window.print();
+  const handlePrint = () => window.print();
 
   // お客様情報をDBに保存し、sign_historyに紐付ける（未完了一覧に顧客名を表示するため）
   const saveCustomerInfo = async (resolution) => {
@@ -439,7 +439,6 @@ const CustomerServiceMode = ({
       console.warn("saveCustomerInfo: ガード条件不合格", { signHistoryId, hasName: !!customerData.name?.trim() });
       return null;
     }
-
     try {
       const phone = customerData.phone?.trim() || null;
       const now = new Date().toISOString();
@@ -449,6 +448,7 @@ const CustomerServiceMode = ({
         tell: phone,
         mail: customerData.email || null,
         address: customerData.address || null,
+        store_id: storeId,
         last_enter_store_at: now,
       };
 
@@ -462,6 +462,7 @@ const CustomerServiceMode = ({
         if (phone) updateFields.tell = phone;
         if (customerData.email?.trim()) updateFields.mail = customerData.email;
         if (customerData.address?.trim()) updateFields.address = customerData.address;
+        updateFields.store_id = storeId;
         updateFields.last_enter_store_at = now;
         updateFields.update_at = now;
         const { error: updErr } = await supabase.from("customers").update(updateFields).eq("id", resolution.existingCustomerId);
@@ -473,7 +474,7 @@ const CustomerServiceMode = ({
         if (updErr) console.error("customers UPDATE エラー:", updErr);
       } else {
         if (phone && resolution?.mode !== "new") {
-          const existing = await findCustomerByPhone(supabase, phone);
+          const existing = await findCustomerByPhone(supabase, phone, storeId);
           if (existing?.id) {
             try { await callEdgeFn("save-customer-history", { customerId: existing.id }); } catch (e) { console.error("履歴保存エラー:", e); }
             const { error: updErr } = await supabase.from("customers").update({ ...customerBase, update_at: now }).eq("id", existing.id);
@@ -503,7 +504,6 @@ const CustomerServiceMode = ({
         console.error("お客様情報の保存に失敗: savedCustomerId が null です");
       }
       return savedCustomerId;
-      
     } catch (err) {
       console.error("お客様情報の保存に失敗:", err);
       return null;
@@ -534,6 +534,7 @@ const CustomerServiceMode = ({
           tell: phone,
           mail: customerData.email || null,
           address: customerData.address || null,
+          store_id: storeId,
           last_enter_store_at: now,
         };
 
@@ -545,11 +546,12 @@ const CustomerServiceMode = ({
           if (phone) updateFields.tell = phone;
           if (customerData.email?.trim()) updateFields.mail = customerData.email;
           if (customerData.address?.trim()) updateFields.address = customerData.address;
+          updateFields.store_id = storeId;
           updateFields.last_enter_store_at = now;
           updateFields.update_at = now;
           await supabase.from("customers").update(updateFields).eq("id", newCustomerId);
         } else if (phone && !skipPhoneSearch) {
-          const existing = await findCustomerByPhone(supabase, phone);
+          const existing = await findCustomerByPhone(supabase, phone, storeId);
           if (existing?.id) {
             try { await callEdgeFn("save-customer-history", { customerId: existing.id }); } catch (e) { console.error("履歴保存エラー:", e); }
             await supabase
@@ -740,6 +742,7 @@ const CustomerServiceMode = ({
             onNext={handleCustomerNext}
             onPrev={prevStep}
             sessionCustomerId={customerId}
+            storeId={storeId}
           />
         );
       case "SIGNATURE":

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { ShieldCheck, TriangleAlert as AlertTriangle, UserCheck, Search } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { findCustomerByPhone } from "../lib/customer";
@@ -10,11 +10,25 @@ const validatePhone = (phone) => {
   return null;
 };
 
-const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemote, sessionCustomerId }) => {
+const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemote, sessionCustomerId, storeId }) => {
   const [errors, setErrors] = useState({});
   // phase: null | "searching" | "duplicate_found" | "handed_to_staff" | "staff_confirm" | "show_existing"
   const [dupPhase, setDupPhase] = useState(null);
   const [existingCustomer, setExistingCustomer] = useState(null);
+  const phoneRef = useRef(null);
+  const [focusPhoneAfterModal, setFocusPhoneAfterModal] = useState(false);
+
+  useEffect(() => {
+    if (focusPhoneAfterModal && dupPhase === null && phoneRef.current) {
+      phoneRef.current.focus();
+      setFocusPhoneAfterModal(false);
+    }
+  }, [focusPhoneAfterModal, dupPhase]);
+
+  const handleBackToInputFromCompare = () => {
+    setDupPhase(null);
+    setFocusPhoneAfterModal(true);
+  };
 
   const handleNext = async () => {
     const newErrors = {};
@@ -49,7 +63,7 @@ const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemot
     // 電話番号重複チェック
     setDupPhase("searching");
     try {
-      const existing = await findCustomerByPhone(supabase, data.phone);
+      const existing = await findCustomerByPhone(supabase, data.phone, storeId);
       if (existing) {
         if (isRemote) {
           // リモートモード: 重複が見つかってもお客様には一切警告を見せず、そのまま次へ進む
@@ -246,6 +260,14 @@ const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemot
                 はい（上書き）
               </button>
             </div>
+            <div className="text-center mt-4">
+              <button
+                onClick={handleBackToInputFromCompare}
+                className="text-sm text-gray-500 hover:text-gray-700 hover:underline"
+              >
+                入力画面に戻る
+              </button>
+            </div>
           </div>
         </div>
       </>
@@ -269,31 +291,31 @@ const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemot
     <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-md">
       <h2 className="text-2xl font-bold mb-6 text-gray-800">お客様情報の入力</h2>
       <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">お名前 (フルネーム)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">お名前 (フルネーム) <span className="ml-1 inline-block text-xs text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 leading-none align-middle">必須</span></label>
             <input type="text" name="name" value={data.name} onChange={onChange} className={fieldClass("name")} placeholder="山田 太郎" />
             {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">フリガナ</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">フリガナ <span className="ml-1 inline-block text-xs text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 leading-none align-middle">必須</span></label>
             <input type="text" name="nameKana" value={data.nameKana} onChange={onChange} className={fieldClass("nameKana")} placeholder="ヤマダ タロウ" />
             {errors.nameKana && <p className="text-red-500 text-xs mt-1">{errors.nameKana}</p>}
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">ご住所</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">ご住所 <span className="ml-1 inline-block text-xs text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 leading-none align-middle">必須</span></label>
           <input type="text" name="address" value={data.address} onChange={onChange} className={fieldClass("address")} placeholder="東京都..." />
           {errors.address && <p className="text-red-500 text-xs mt-1">{errors.address}</p>}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">電話番号</label>
-            <input type="tel" name="phone" value={data.phone} onChange={onChange} className={fieldClass("phone")} placeholder="09012345678" />
+            <label className="block text-sm font-medium text-gray-700 mb-1">電話番号 <span className="ml-1 inline-block text-xs text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 leading-none align-middle">必須</span></label>
+            <input ref={phoneRef} type="tel" name="phone" value={data.phone} onChange={onChange} className={fieldClass("phone")} placeholder="09012345678" />
             {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone}</p>}
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">メールアドレス</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">メールアドレス <span className="ml-1 inline-block text-xs text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5 leading-none align-middle">必須</span></label>
             <input type="email" name="email" value={data.email} onChange={onChange} className={fieldClass("email")} placeholder="example@email.com" />
             {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
           </div>
