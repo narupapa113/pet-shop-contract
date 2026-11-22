@@ -12,6 +12,9 @@ export const DEFAULT_TEMPLATES = [
   {
     id: "tpl_standard",
     name: "標準売買契約書",
+    description: "売主（以下「甲」という）と買主（以下「乙」という）は、以下の通りペット生体の売買契約を締結する。甲は乙に対し、動物愛護管理法に基づく現物確認および対面説明を行ったことを確認する。",
+    staffTitle: "1. 生体情報",
+    buyerTitle: "2. 買主（乙）情報",
     fields: [
       { id: "pet_type", label: "ペットの種類", value: "", type: "text", placeholder: "例：トイプードル" },
       { id: "pet_color", label: "毛色", value: "", type: "text", placeholder: "例：レッド" },
@@ -24,6 +27,9 @@ export const DEFAULT_TEMPLATES = [
   {
     id: "tpl_adoption",
     name: "譲渡誓約書（里親用）",
+    description: "売主（以下「甲」という）と買主（以下「乙」という）は、以下の通りペット生体の売買契約を締結する。甲は乙に対し、動物愛護管理法に基づく現物確認および対面説明を行ったことを確認する。",
+    staffTitle: "1. 生体情報",
+    buyerTitle: "2. 買主（乙）情報",
     fields: [
       { id: "pet_type", label: "種類", value: "", type: "text", placeholder: "例：雑種（犬）" },
       { id: "pet_name", label: "仮名", value: "", type: "text", placeholder: "保護時の名前" },

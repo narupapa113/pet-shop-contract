@@ -112,6 +112,10 @@ const ContractPreviewStep = ({
   attachmentIds,
   isRemote = false,
   hideEditButton = false,
+  previewMode = false,
+  contractDescription = "",
+  staffSectionTitle = "1. 生体情報",
+  buyerSectionTitle = "2. 買主（乙）情報",
 }) => {
   const currentDate = new Date().toLocaleDateString("ja-JP", {
     year: "numeric",
@@ -225,6 +229,7 @@ const ContractPreviewStep = ({
 
   return (
     <div className="flex flex-col items-center">
+      {!previewMode && (
       <div className="w-full max-w-4xl mb-6 flex justify-between items-center print:hidden">
         <h2 className="text-xl font-bold text-gray-800">契約内容の確認</h2>
         <div className="flex space-x-4">
@@ -256,6 +261,7 @@ const ContractPreviewStep = ({
           )}
         </div>
       </div>
+      )}
 
       <A4ScaledPreview>
       <div
@@ -270,12 +276,12 @@ const ContractPreviewStep = ({
         </div>
         <div className="mb-8">
           <p className="mb-4">
-            売主（以下「甲」という）と買主（以下「乙」という）は、以下の通りペット生体の売買契約を締結する。甲は乙に対し、動物愛護管理法に基づく現物確認および対面説明を行ったことを確認する。
+            {contractDescription || "売主（以下「甲」という）と買主（以下「乙」という）は、以下の通りペット生体の売買契約を締結する。甲は乙に対し、動物愛護管理法に基づく現物確認および対面説明を行ったことを確認する。"}
           </p>
         </div>
         <div className="mb-8">
           <h3 className="text-lg font-bold border-l-4 border-gray-800 pl-3 mb-4 bg-gray-100 py-1 print:bg-gray-100">
-            1. 生体情報
+            {staffSectionTitle || "1. 生体情報"}
           </h3>
           <table className="w-full border-collapse border border-gray-400">
             <tbody>
@@ -308,7 +314,7 @@ const ContractPreviewStep = ({
         </div>
         <div className="mb-8">
           <h3 className="text-lg font-bold border-l-4 border-gray-800 pl-3 mb-4 bg-gray-100 py-1 print:bg-gray-100">
-            2. 買主（乙）情報
+            {buyerSectionTitle || "2. 買主（乙）情報"}
           </h3>
           <table className="w-full border-collapse border border-gray-400">
             <tbody>
@@ -360,16 +366,14 @@ const ContractPreviewStep = ({
         </div>
         <div className="mt-16 text-center text-sm text-gray-500 border-t pt-4">
           <p className="font-bold">
-            {companyInfo?.name || "株式会社ペットショップ見本"}
+            {companyInfo?.name || "株式会社KAWACHIYA"}
           </p>
-          <p>{companyInfo?.address || "東京都渋谷区XX-XX"}</p>
-          <p>TEL: {companyInfo?.phone || "03-XXXX-XXXX"}</p>
         </div>
       </div>
       </A4ScaledPreview>
 
       {/* 添付資料プレビュー（選択順で表示） */}
-      {attachedDocuments.length > 0 && (
+      {!previewMode && attachedDocuments.length > 0 && (
         <div className="mt-8 w-full print:hidden">
           <p className="text-center text-gray-500 mb-4 text-sm">
             --- 添付資料プレビュー（PDF保存ボタンで契約書と結合されます） ---

@@ -325,6 +325,9 @@ const CustomerRemoteMode = ({ remoteSessionId, onComplete }) => {
             documentsList={documentsList}
             attachmentIds={flow.attachmentIds}
             isRemote={true}
+            contractDescription={staffTemplates.find((t) => t.id === flow?.templateId)?.description}
+            staffSectionTitle={staffTemplates.find((t) => t.id === flow?.templateId)?.staffTitle}
+            buyerSectionTitle={staffTemplates.find((t) => t.id === flow?.templateId)?.buyerTitle}
           />
         );
       default:
