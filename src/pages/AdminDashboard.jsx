@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Settings, FileText, Plus, Trash2, Upload, LogOut, Users, ChartBar as BarChart3, Calendar, Save, CircleCheck as CheckCircle, CreditCard as Edit2, Film, X, ArrowUp, ArrowDown, MoveVertical as MoreVertical, History, User, Phone, Mail, Play, Link, Smartphone, List, LayoutDashboard, Briefcase, Shield, Search, ChevronRight, ChevronDown, RotateCcw, TriangleAlert as AlertTriangle, ChevronLeft } from "lucide-react";
+import { Settings, FileText, Plus, Trash2, Upload, LogOut, Users, ChartBar as BarChart3, Calendar, Save, CircleCheck as CheckCircle, CreditCard as Edit2, Film, X, ArrowUp, ArrowDown, MoveVertical as MoreVertical, History, User, Phone, Mail, Play, Link, Smartphone, List, LayoutDashboard, Briefcase, Shield, Search, ChevronRight, ChevronDown, RotateCcw, TriangleAlert as AlertTriangle, ChevronLeft, Eye } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { STEP_TYPES, DEFAULT_TEMPLATES } from "../constants";
 import ContractPreviewStep from "../components/ContractPreviewStep";
@@ -122,6 +122,7 @@ const AdminDashboard = ({
   }, []);
   const [selectedTemplateId, setSelectedTemplateId] = useState(staffTemplates[0]?.id);
   const [isSaved, setIsSaved] = useState(false);
+  const [previewTemplateId, setPreviewTemplateId] = useState(null);
 
   // --- テンプレート管理 ---
   const activeTemplateIndex = staffTemplates.findIndex((t) => t.id === selectedTemplateId);
@@ -137,6 +138,14 @@ const AdminDashboard = ({
     const newTemplates = [...staffTemplates];
     newTemplates.find((t) => t.id === activeTemplate.id).name = name;
     setStaffTemplates(newTemplates);
+  };
+
+  const updateTemplateSpecial = (key, value) => {
+    if (!activeTemplate) return;
+    const newTemplates = [...staffTemplates];
+    newTemplates.find((t) => t.id === activeTemplate.id)[key] = value;
+    setStaffTemplates(newTemplates);
+    setIsSaved(false);
   };
 
   const updateField = (fieldIndex, key, value) => {
@@ -216,7 +225,8 @@ const AdminDashboard = ({
 
   const addNewTemplate = async () => {
     if (!can(adminPermissions, 5, 2)) return;
-    const defaultFields = DEFAULT_TEMPLATES[0].fields;
+    const defaultTpl = DEFAULT_TEMPLATES[0];
+    const defaultFields = defaultTpl.fields;
     const { data, error } = await supabase
       .from("contract_templates_header")
       .insert({ name: "新しいテンプレート", store_id: storeId })
@@ -224,7 +234,7 @@ const AdminDashboard = ({
       .maybeSingle();
     if (error) { console.error("テンプレート追加エラー:", error); return; }
     const newId = data.id;
-    const itemRows = defaultFields.map((f, i) => ({
+    const normalRows = defaultFields.map((f, i) => ({
       id: newId,
       item_no: i + 1,
       item_name: f.label,
@@ -233,10 +243,22 @@ const AdminDashboard = ({
       placeholder: f.placeholder || null,
       is_requaier: !!f.isRequired,
     }));
-    const { error: itemError } = await supabase.from("contract_templates_item").insert(itemRows);
+    const specialRows = [
+      { id: newId, item_no: 999, item_name: defaultTpl.description || "", input_type: 1, input_select: [], placeholder: null, is_requaier: true },
+      { id: newId, item_no: 998, item_name: defaultTpl.staffTitle || "1. 生体情報", input_type: 1, input_select: [], placeholder: null, is_requaier: true },
+      { id: newId, item_no: 997, item_name: defaultTpl.buyerTitle || "2. 買主（乙）情報", input_type: 1, input_select: [], placeholder: null, is_requaier: true },
+    ];
+    const { error: itemError } = await supabase.from("contract_templates_item").insert([...normalRows, ...specialRows]);
     if (itemError) console.error("テンプレート項目追加エラー:", itemError);
     const newFields = defaultFields.map((f, i) => ({ ...f, id: `field_${i + 1}` }));
-    setStaffTemplates([...staffTemplates, { id: newId, name: "新しいテンプレート", fields: newFields }]);
+    setStaffTemplates([...staffTemplates, {
+      id: newId,
+      name: "新しいテンプレート",
+      fields: newFields,
+      description: defaultTpl.description || "",
+      staffTitle: defaultTpl.staffTitle || "1. 生体情報",
+      buyerTitle: defaultTpl.buyerTitle || "2. 買主（乙）情報",
+    }]);
     setSelectedTemplateId(newId);
   };
 
@@ -272,7 +294,7 @@ const AdminDashboard = ({
 
     await supabase.from("contract_templates_item").delete().eq("id", activeTemplate.id);
 
-    const itemRows = activeTemplate.fields.map((f, i) => ({
+    const normalRows = activeTemplate.fields.map((f, i) => ({
       id: activeTemplate.id,
       item_no: i + 1,
       item_name: f.label,
@@ -281,8 +303,14 @@ const AdminDashboard = ({
       placeholder: f.placeholder || null,
       is_requaier: !!f.isRequired,
     }));
-    if (itemRows.length > 0) {
-      const { error: itemError } = await supabase.from("contract_templates_item").insert(itemRows);
+    const specialRows = [
+      { id: activeTemplate.id, item_no: 999, item_name: activeTemplate.description || "", input_type: 1, input_select: [], placeholder: null, is_requaier: true },
+      { id: activeTemplate.id, item_no: 998, item_name: activeTemplate.staffTitle || "1. 生体情報", input_type: 1, input_select: [], placeholder: null, is_requaier: true },
+      { id: activeTemplate.id, item_no: 997, item_name: activeTemplate.buyerTitle || "2. 買主（乙）情報", input_type: 1, input_select: [], placeholder: null, is_requaier: true },
+    ];
+    const allRows = [...normalRows, ...specialRows];
+    if (allRows.length > 0) {
+      const { error: itemError } = await supabase.from("contract_templates_item").insert(allRows);
       if (itemError) { console.error("テンプレート項目保存エラー:", itemError); return; }
     }
 
@@ -1360,12 +1388,18 @@ const deleteCustomer = async (id) => {
         if (tmplHeader?.name) templateName = tmplHeader.name;
       }
 
-      // staffFields: テンプレート項目とsign_inputを対応付け
+      // staffFields: テンプレート項目とsign_inputを対応付け（item_no 997/998/999は除外）
       const INPUT_TYPE_TO_STR = { 1: "text", 2: "number", 3: "date", 4: "select" };
-      const staffFields = templateItems.map((item) => {
+      const normalItems = templateItems.filter((item) => item.item_no < 997);
+      const staffFields = normalItems.map((item) => {
         const input = (inputs || []).find((i) => i.sign_item_no === item.item_no);
         return { id: `item_${item.item_no}`, label: item.item_name, value: input?.sign_item_value || "", type: INPUT_TYPE_TO_STR[item.input_type] || "text" };
       });
+
+      // 特別アイテム (999=説明文, 998=入力情報タイトル, 997=署名者情報タイトル)
+      const descItem = templateItems.find((i) => i.item_no === 999);
+      const staffTitleItem = templateItems.find((i) => i.item_no === 998);
+      const buyerTitleItem = templateItems.find((i) => i.item_no === 997);
 
       // 顧客データ
       let customerData = { name: "", nameKana: "", address: "", phone: "", email: "" };
@@ -1401,6 +1435,9 @@ const deleteCustomer = async (id) => {
         signatureImage,
         templateName,
         attachmentIds: flowRow?.files || [],
+        contractDescription: descItem?.item_name || "",
+        staffSectionTitle: staffTitleItem?.item_name || "1. 生体情報",
+        buyerSectionTitle: buyerTitleItem?.item_name || "2. 買主（乙）情報",
       });
     } catch (e) {
       alert(`データの読み込みに失敗しました: ${e.message}`);
@@ -2183,11 +2220,54 @@ const deleteCustomer = async (id) => {
                           />
                         </div>
                         <div className="flex space-x-3">
+                          <button
+                            onClick={() => setPreviewTemplateId(activeTemplate.id)}
+                            className="flex items-center px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg font-medium border border-blue-200"
+                          >
+                            <Eye size={16} className="mr-2" /> プレビュー
+                          </button>
                           {can(adminPermissions, 5, 4) && (
                             <button onClick={() => deleteTemplate(activeTemplate.id)} className="flex items-center px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg font-medium border border-red-200">
                               <Trash2 size={16} className="mr-2" /> 削除
                             </button>
                           )}
+                        </div>
+                      </div>
+                      <div className="space-y-4 mb-4">
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">契約書説明文</label>
+                          <textarea
+                            value={activeTemplate.description || ""}
+                            onChange={(e) => updateTemplateSpecial("description", e.target.value)}
+                            disabled={!can(adminPermissions, 5, 3)}
+                            rows={3}
+                            className="w-full p-2 border border-gray-300 rounded-lg text-sm disabled:bg-gray-50 disabled:text-gray-500"
+                            placeholder="契約書の説明文を入力してください"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-bold text-gray-500 mb-1">入力情報のタイトル</label>
+                            <input
+                              type="text"
+                              value={activeTemplate.staffTitle || ""}
+                              onChange={(e) => updateTemplateSpecial("staffTitle", e.target.value)}
+                              disabled={!can(adminPermissions, 5, 3)}
+                              className="w-full p-2 border border-gray-300 rounded-lg text-sm disabled:bg-gray-50 disabled:text-gray-500"
+                              placeholder="例: 1. 生体情報"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-gray-500 mb-1">署名者情報のタイトル</label>
+                            <input
+                              type="text"
+                              value={activeTemplate.buyerTitle || ""}
+                              onChange={(e) => updateTemplateSpecial("buyerTitle", e.target.value)}
+                              disabled={!can(adminPermissions, 5, 3)}
+                              className="w-full p-2 border border-gray-300 rounded-lg text-sm disabled:bg-gray-50 disabled:text-gray-500"
+                              placeholder="例: 2. 買主（乙）情報"
+                            />
+                          </div>
                         </div>
                       </div>
                       <div className="overflow-y-auto flex-1 pr-2">
@@ -2287,6 +2367,45 @@ const deleteCustomer = async (id) => {
             </div>
           </div>
         )}
+
+        {/* 契約書テンプレート プレビューモーダル */}
+        {previewTemplateId && (() => {
+          const tpl = staffTemplates.find((t) => t.id === previewTemplateId);
+          if (!tpl) return null;
+          return (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+                <div className="p-4 sm:p-6 border-b flex justify-between items-center flex-shrink-0">
+                  <div className="flex items-center">
+                    <Eye size={22} className="mr-2 text-blue-600" />
+                    <h3 className="text-lg sm:text-xl font-bold text-gray-800">プレビュー: {tpl.name}</h3>
+                  </div>
+                  <button onClick={() => setPreviewTemplateId(null)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+                  <ContractPreviewStep
+                    customerData={{ name: "（入力例）山田 太郎", address: "（入力例）東京都渋谷区...", phone: "（入力例）09012345678" }}
+                    staffFields={tpl.fields.map((f) => ({ ...f, value: f.type === "select" ? (f.options?.[0] || "") : (f.placeholder || "") }))}
+                    signatureImage={null}
+                    companyInfo={companyInfo}
+                    templateName={tpl.name}
+                    documentsList={[]}
+                    attachmentIds={[]}
+                    isRemote={false}
+                    hideEditButton={true}
+                    previewMode={true}
+                    contractDescription={tpl.description}
+                    staffSectionTitle={tpl.staffTitle}
+                    buyerSectionTitle={tpl.buyerTitle}
+                  />
+                </div>
+                <div className="p-4 border-t bg-gray-50 flex justify-end">
+                  <button onClick={() => setPreviewTemplateId(null)} className="px-6 py-2.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-white font-medium">閉じる</button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* コンテンツ管理 */}
         {activeTab === "upload" && showUpload && (
@@ -3325,6 +3444,9 @@ const deleteCustomer = async (id) => {
               attachmentIds={historyPreviewData.attachmentIds}
               isRemote={false}
               hideEditButton={true}
+              contractDescription={historyPreviewData.contractDescription}
+              staffSectionTitle={historyPreviewData.staffSectionTitle}
+              buyerSectionTitle={historyPreviewData.buyerSectionTitle}
             />
           </div>
         </div>

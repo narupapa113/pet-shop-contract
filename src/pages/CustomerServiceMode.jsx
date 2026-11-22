@@ -784,6 +784,9 @@ const CustomerServiceMode = ({
             templateName={templateName}
             documentsList={documentsList}
             attachmentIds={selectedFlow.attachmentIds}
+            contractDescription={staffTemplates.find((t) => t.id === selectedFlow.templateId)?.description}
+            staffSectionTitle={staffTemplates.find((t) => t.id === selectedFlow.templateId)?.staffTitle}
+            buyerSectionTitle={staffTemplates.find((t) => t.id === selectedFlow.templateId)?.buyerTitle}
           />
         );
       default:

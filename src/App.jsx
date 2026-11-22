@@ -140,7 +140,12 @@ const useAppData = () => {
       const templatesWithFields = await Promise.all(
         templatesData.map(async (tpl) => {
           const { data: items } = await supabase.from("contract_templates_item").select("*").eq("id", tpl.id).order("item_no", { ascending: true });
-          const fields = (items || []).map((item) => ({
+          const allItems = items || [];
+          const descItem = allItems.find((i) => i.item_no === 999);
+          const staffTitleItem = allItems.find((i) => i.item_no === 998);
+          const buyerTitleItem = allItems.find((i) => i.item_no === 997);
+          const normalItems = allItems.filter((i) => i.item_no < 997);
+          const fields = normalItems.map((item) => ({
             id: `field_${item.item_no}`,
             label: item.item_name,
             value: "",
@@ -149,7 +154,14 @@ const useAppData = () => {
             options: item.input_select || [],
             isRequired: !!item.is_requaier,
           }));
-          return { id: tpl.id, name: tpl.name, fields };
+          return {
+            id: tpl.id,
+            name: tpl.name,
+            fields,
+            description: descItem?.item_name || "",
+            staffTitle: staffTitleItem?.item_name || "1. 生体情報",
+            buyerTitle: buyerTitleItem?.item_name || "2. 買主（乙）情報",
+          };
         }),
       );
       setStaffTemplates(templatesWithFields);
