@@ -16,7 +16,7 @@ const StaffInputStep = ({ fields, templateName, onFieldChange, onAdd, onRemove, 
           {templateName && (
             <p className="text-sm text-blue-600 mt-1 font-medium">テンプレート: {templateName}</p>
           )}
-          <p className="text-sm text-gray-500 mt-1">販売するペットの詳細情報を入力してください。</p>
+          <p className="text-sm text-gray-500 mt-1">契約内容に基づく詳細情報を入力してください。</p>
         </div>
         {fields.length > 0 && (
           <button

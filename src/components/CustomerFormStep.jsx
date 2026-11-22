@@ -325,8 +325,7 @@ const CustomerFormStep = ({ data, onChange, onNext, onPrev, submitLabel, isRemot
             <ShieldCheck size={18} className="mr-2" /> 確認事項
           </h3>
           <ul className="list-disc list-inside text-sm text-yellow-800 space-y-1 mb-3">
-            <li>動物愛護管理法に基づき、対面での説明を受けました。</li>
-            <li>ペットの飼育に必要な環境が整っています。</li>
+            <li>契約内容について、対面での説明（動画を含む）を受けました。</li>
           </ul>
           <label className="flex items-center space-x-3 cursor-pointer pt-2 border-t border-yellow-200">
             <input type="checkbox" name="checkTerms" checked={data.checkTerms} onChange={onChange} className="w-5 h-5 text-blue-600 rounded" />

@@ -366,10 +366,8 @@ const ContractPreviewStep = ({
         </div>
         <div className="mt-16 text-center text-sm text-gray-500 border-t pt-4">
           <p className="font-bold">
-            {companyInfo?.name || "株式会社ペットショップ見本"}
+            {companyInfo?.name || "株式会社KAWACHIYA"}
           </p>
-          <p>{companyInfo?.address || "東京都渋谷区XX-XX"}</p>
-          <p>TEL: {companyInfo?.phone || "03-XXXX-XXXX"}</p>
         </div>
       </div>
       </A4ScaledPreview>
